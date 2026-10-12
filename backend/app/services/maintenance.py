@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
@@ -17,7 +17,10 @@ def purge_audit(db: Session) -> int:
     if days <= 0:
         return 0
     cutoff = datetime.now(UTC) - timedelta(days=days)
+    # The append-only trigger allows deletes only while this flag is set
+    db.execute(text("SELECT set_config('rm.audit_purge', 'on', true)"))
     removed = db.execute(delete(AuditLog).where(AuditLog.created_at < cutoff)).rowcount or 0  # type: ignore[attr-defined]
+    db.execute(text("SELECT set_config('rm.audit_purge', 'off', true)"))
     if removed:
         audit(db, "audit.purged", details={"removed": removed, "retention_days": days})
     return removed

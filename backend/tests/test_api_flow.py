@@ -192,6 +192,14 @@ def test_scoped_user_isolation(loaded: ApiClient, client: ApiClient) -> None:
     assert core_asset["total"] == 0
     assert other is client
 
+    # Scan summaries only count the user's own hosts and findings
+    open_counts = dash["kpis"]["open"]
+    scan = client.get("/api/v1/scans").json()["items"][0]
+    assert scan["host_count"] == len(assets["items"])
+    assert scan["critical_count"] == open_counts["critical"]
+    assert scan["finding_count"] == sum(open_counts[k] for k in ("critical", "high", "medium", "low"))
+    assert client.get(f"/api/v1/scans/{scan['id']}").json()["host_count"] == scan["host_count"]
+
 
 @pytest.mark.parametrize("fmt", ["csv", "xlsx", "html", "pdf"])
 def test_reports(loaded: ApiClient, fmt: str) -> None:
