@@ -20,7 +20,8 @@ import { cn, fmtDate } from "@/lib/utils";
 
 export function CriticalityDots({ value }: { value: number }) {
   return (
-    <span role="img"
+    <span
+      role="img"
       className="inline-flex gap-0.5"
       title={`Criticality ${value} of 5`}
       aria-label={`Criticality ${value} of 5`}

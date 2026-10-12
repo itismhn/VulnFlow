@@ -53,7 +53,11 @@ export function AddressHeatmap({ networkId, cidr }: { networkId: number; cidr: s
         const address = intToIp(start + i);
         return { address, cell: byAddr.get(address) };
       });
-      return { cells, cols: size >= 1024 ? 64 : size >= 512 ? 32 : size >= 64 ? 16 : Math.max(4, Math.ceil(Math.sqrt(size))) };
+      return {
+        cells,
+        cols:
+          size >= 1024 ? 64 : size >= 512 ? 32 : size >= 64 ? 16 : Math.max(4, Math.ceil(Math.sqrt(size))),
+      };
     }
     if (data.mode === "block" && isV4 && prefix >= 14) {
       const blocks = 2 ** (24 - prefix);
