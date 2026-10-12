@@ -13,15 +13,20 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAccountRouteImport } from './routes/_app/account'
+import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
 import { Route as AppFindingsRouteImport } from './routes/_app/findings'
+import { Route as AppMetricsRouteImport } from './routes/_app/metrics'
+import { Route as AppMyWorkRouteImport } from './routes/_app/my-work'
 import { Route as AppNetworksRouteImport } from './routes/_app/networks'
 import { Route as AppReportsRouteImport } from './routes/_app/reports'
 import { Route as AppAdminAuditRouteImport } from './routes/_app/admin/audit'
+import { Route as AppAdminSettingsRouteImport } from './routes/_app/admin/settings'
 import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
 import { Route as AppAssetsIndexRouteImport } from './routes/_app/assets/index'
 import { Route as AppAssetsAssetIdRouteImport } from './routes/_app/assets/$assetId'
 import { Route as AppScansIndexRouteImport } from './routes/_app/scans/index'
 import { Route as AppScansScanIdRouteImport } from './routes/_app/scans/$scanId'
+import { Route as AppScansCompareRouteImport } from './routes/_app/scans/compare'
 import { Route as AppVulnerabilitiesIndexRouteImport } from './routes/_app/vulnerabilities/index'
 import { Route as AppVulnerabilitiesPluginIdRouteImport } from './routes/_app/vulnerabilities/$pluginId'
 
@@ -44,9 +49,24 @@ const AppAccountRoute = AppAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => AppRoute,
 } as any)
+const AppApprovalsRoute = AppApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppFindingsRoute = AppFindingsRouteImport.update({
   id: '/findings',
   path: '/findings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMetricsRoute = AppMetricsRouteImport.update({
+  id: '/metrics',
+  path: '/metrics',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMyWorkRoute = AppMyWorkRouteImport.update({
+  id: '/my-work',
+  path: '/my-work',
   getParentRoute: () => AppRoute,
 } as any)
 const AppNetworksRoute = AppNetworksRouteImport.update({
@@ -62,6 +82,11 @@ const AppReportsRoute = AppReportsRouteImport.update({
 const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
   id: '/admin/audit',
   path: '/admin/audit',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminSettingsRoute = AppAdminSettingsRouteImport.update({
+  id: '/admin/settings',
+  path: '/admin/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
@@ -89,6 +114,11 @@ const AppScansScanIdRoute = AppScansScanIdRouteImport.update({
   path: '/scans/$scanId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppScansCompareRoute = AppScansCompareRouteImport.update({
+  id: '/scans/compare',
+  path: '/scans/compare',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppVulnerabilitiesIndexRoute = AppVulnerabilitiesIndexRouteImport.update({
   id: '/vulnerabilities/',
   path: '/vulnerabilities/',
@@ -105,13 +135,18 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/account': typeof AppAccountRoute
+  '/approvals': typeof AppApprovalsRoute
   '/findings': typeof AppFindingsRoute
+  '/metrics': typeof AppMetricsRoute
+  '/my-work': typeof AppMyWorkRoute
   '/networks': typeof AppNetworksRoute
   '/reports': typeof AppReportsRoute
   '/admin/audit': typeof AppAdminAuditRoute
+  '/admin/settings': typeof AppAdminSettingsRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/assets/$assetId': typeof AppAssetsAssetIdRoute
   '/scans/$scanId': typeof AppScansScanIdRoute
+  '/scans/compare': typeof AppScansCompareRoute
   '/vulnerabilities/$pluginId': typeof AppVulnerabilitiesPluginIdRoute
   '/assets/': typeof AppAssetsIndexRoute
   '/scans/': typeof AppScansIndexRoute
@@ -120,14 +155,19 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/account': typeof AppAccountRoute
+  '/approvals': typeof AppApprovalsRoute
   '/findings': typeof AppFindingsRoute
+  '/metrics': typeof AppMetricsRoute
+  '/my-work': typeof AppMyWorkRoute
   '/networks': typeof AppNetworksRoute
   '/reports': typeof AppReportsRoute
   '/': typeof AppIndexRoute
   '/admin/audit': typeof AppAdminAuditRoute
+  '/admin/settings': typeof AppAdminSettingsRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/assets/$assetId': typeof AppAssetsAssetIdRoute
   '/scans/$scanId': typeof AppScansScanIdRoute
+  '/scans/compare': typeof AppScansCompareRoute
   '/vulnerabilities/$pluginId': typeof AppVulnerabilitiesPluginIdRoute
   '/assets': typeof AppAssetsIndexRoute
   '/scans': typeof AppScansIndexRoute
@@ -138,14 +178,19 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/account': typeof AppAccountRoute
+  '/_app/approvals': typeof AppApprovalsRoute
   '/_app/findings': typeof AppFindingsRoute
+  '/_app/metrics': typeof AppMetricsRoute
+  '/_app/my-work': typeof AppMyWorkRoute
   '/_app/networks': typeof AppNetworksRoute
   '/_app/reports': typeof AppReportsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/admin/audit': typeof AppAdminAuditRoute
+  '/_app/admin/settings': typeof AppAdminSettingsRoute
   '/_app/admin/users': typeof AppAdminUsersRoute
   '/_app/assets/$assetId': typeof AppAssetsAssetIdRoute
   '/_app/scans/$scanId': typeof AppScansScanIdRoute
+  '/_app/scans/compare': typeof AppScansCompareRoute
   '/_app/vulnerabilities/$pluginId': typeof AppVulnerabilitiesPluginIdRoute
   '/_app/assets/': typeof AppAssetsIndexRoute
   '/_app/scans/': typeof AppScansIndexRoute
@@ -157,13 +202,18 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/account'
+    | '/approvals'
     | '/findings'
+    | '/metrics'
+    | '/my-work'
     | '/networks'
     | '/reports'
     | '/admin/audit'
+    | '/admin/settings'
     | '/admin/users'
     | '/assets/$assetId'
     | '/scans/$scanId'
+    | '/scans/compare'
     | '/vulnerabilities/$pluginId'
     | '/assets/'
     | '/scans/'
@@ -172,14 +222,19 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/account'
+    | '/approvals'
     | '/findings'
+    | '/metrics'
+    | '/my-work'
     | '/networks'
     | '/reports'
     | '/'
     | '/admin/audit'
+    | '/admin/settings'
     | '/admin/users'
     | '/assets/$assetId'
     | '/scans/$scanId'
+    | '/scans/compare'
     | '/vulnerabilities/$pluginId'
     | '/assets'
     | '/scans'
@@ -189,14 +244,19 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/_app/account'
+    | '/_app/approvals'
     | '/_app/findings'
+    | '/_app/metrics'
+    | '/_app/my-work'
     | '/_app/networks'
     | '/_app/reports'
     | '/_app/'
     | '/_app/admin/audit'
+    | '/_app/admin/settings'
     | '/_app/admin/users'
     | '/_app/assets/$assetId'
     | '/_app/scans/$scanId'
+    | '/_app/scans/compare'
     | '/_app/vulnerabilities/$pluginId'
     | '/_app/assets/'
     | '/_app/scans/'
@@ -238,11 +298,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/approvals': {
+      id: '/_app/approvals'
+      path: '/approvals'
+      fullPath: '/approvals'
+      preLoaderRoute: typeof AppApprovalsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/findings': {
       id: '/_app/findings'
       path: '/findings'
       fullPath: '/findings'
       preLoaderRoute: typeof AppFindingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/metrics': {
+      id: '/_app/metrics'
+      path: '/metrics'
+      fullPath: '/metrics'
+      preLoaderRoute: typeof AppMetricsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/my-work': {
+      id: '/_app/my-work'
+      path: '/my-work'
+      fullPath: '/my-work'
+      preLoaderRoute: typeof AppMyWorkRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/networks': {
@@ -264,6 +345,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/audit'
       fullPath: '/admin/audit'
       preLoaderRoute: typeof AppAdminAuditRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/settings': {
+      id: '/_app/admin/settings'
+      path: '/admin/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AppAdminSettingsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/admin/users': {
@@ -301,6 +389,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppScansScanIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/scans/compare': {
+      id: '/_app/scans/compare'
+      path: '/scans/compare'
+      fullPath: '/scans/compare'
+      preLoaderRoute: typeof AppScansCompareRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/vulnerabilities/': {
       id: '/_app/vulnerabilities/'
       path: '/vulnerabilities'
@@ -320,14 +415,19 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppAccountRoute: typeof AppAccountRoute
+  AppApprovalsRoute: typeof AppApprovalsRoute
   AppFindingsRoute: typeof AppFindingsRoute
+  AppMetricsRoute: typeof AppMetricsRoute
+  AppMyWorkRoute: typeof AppMyWorkRoute
   AppNetworksRoute: typeof AppNetworksRoute
   AppReportsRoute: typeof AppReportsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAdminAuditRoute: typeof AppAdminAuditRoute
+  AppAdminSettingsRoute: typeof AppAdminSettingsRoute
   AppAdminUsersRoute: typeof AppAdminUsersRoute
   AppAssetsAssetIdRoute: typeof AppAssetsAssetIdRoute
   AppScansScanIdRoute: typeof AppScansScanIdRoute
+  AppScansCompareRoute: typeof AppScansCompareRoute
   AppVulnerabilitiesPluginIdRoute: typeof AppVulnerabilitiesPluginIdRoute
   AppAssetsIndexRoute: typeof AppAssetsIndexRoute
   AppScansIndexRoute: typeof AppScansIndexRoute
@@ -336,14 +436,19 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAccountRoute: AppAccountRoute,
+  AppApprovalsRoute: AppApprovalsRoute,
   AppFindingsRoute: AppFindingsRoute,
+  AppMetricsRoute: AppMetricsRoute,
+  AppMyWorkRoute: AppMyWorkRoute,
   AppNetworksRoute: AppNetworksRoute,
   AppReportsRoute: AppReportsRoute,
   AppIndexRoute: AppIndexRoute,
   AppAdminAuditRoute: AppAdminAuditRoute,
+  AppAdminSettingsRoute: AppAdminSettingsRoute,
   AppAdminUsersRoute: AppAdminUsersRoute,
   AppAssetsAssetIdRoute: AppAssetsAssetIdRoute,
   AppScansScanIdRoute: AppScansScanIdRoute,
+  AppScansCompareRoute: AppScansCompareRoute,
   AppVulnerabilitiesPluginIdRoute: AppVulnerabilitiesPluginIdRoute,
   AppAssetsIndexRoute: AppAssetsIndexRoute,
   AppScansIndexRoute: AppScansIndexRoute,

@@ -25,6 +25,7 @@ import {
   Select,
   Textarea,
 } from "@/components/ui/primitives";
+import { useAppSettings } from "@/features/workflow/risk-dialog";
 import { api, downloadUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useNetworks, useZones } from "@/lib/queries";
@@ -68,6 +69,7 @@ const FORMAT_ICON: Record<ReportFormat, React.ReactNode> = {
 export function ReportsPage({ initialFilters }: { initialFilters?: string }) {
   const { can } = useAuth();
   const qc = useQueryClient();
+  const { data: settings } = useAppSettings();
   const preset = (() => {
     try {
       return initialFilters ? (JSON.parse(initialFilters) as FindingFilters) : undefined;
@@ -116,8 +118,8 @@ export function ReportsPage({ initialFilters }: { initialFilters?: string }) {
                     sections: ["summary", "kpis", "details"],
                     filters: {},
                     branding: {
-                      company_name: "",
-                      classification: "CONFIDENTIAL - INTERNAL USE ONLY",
+                      company_name: settings?.branding_company ?? "",
+                      classification: settings?.branding_classification || "CONFIDENTIAL - INTERNAL USE ONLY",
                       primary_color: "#0e7490",
                       footer_text: "",
                     },

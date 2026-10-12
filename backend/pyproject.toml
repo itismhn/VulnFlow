@@ -1,6 +1,6 @@
 [project]
 name = "report-manager-api"
-version = "0.1.0"
+version = "0.2.0"
 description = "Self-hosted vulnerability report management for Nessus scans"
 license = "Apache-2.0"
 requires-python = ">=3.12"

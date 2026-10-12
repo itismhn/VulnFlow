@@ -11,8 +11,8 @@ import type { Role, User } from "@/lib/types";
 import { fmtDate, fmtRelative } from "@/lib/utils";
 
 const ROLE_INFO: Record<Role, string> = {
-  admin: "Everything, including users, audit log, risk acceptance and deleting scans",
-  analyst: "Import scans, triage findings, manage networks and report templates",
+  admin: "Everything, including users, settings, approving risk acceptance and deleting scans",
+  analyst: "Import scans, triage findings, request risk acceptance, manage networks and templates",
   viewer: "Read-only access and report generation",
 };
 

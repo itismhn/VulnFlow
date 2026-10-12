@@ -34,7 +34,7 @@ from app.models import (
     ScanHost,
 )
 from app.models.enums import ACTIVE_STATUSES, FindingEventKind, FindingStatus, ScanStatus
-from app.services import networks
+from app.services import networks, risk, sla, suppression
 from app.services.parsers import ParsedHost, get_parser
 from app.services.parsers.base import ParsedItem
 
@@ -88,6 +88,9 @@ def ingest_scan(db: Session, scan: Scan, progress: Callable[[int], None] | None 
 
     stats.fixed = _auto_fix(db, scan, fallback_time)
     networks.reassign_assets(db, stats.asset_ids)
+    suppression.apply_all(db, stats.asset_ids)
+    risk.expire_due(db)
+    sla.apply_sla(db, stats.asset_ids)
     _finalize_scan(db, scan, parser.meta, stats)
     return stats
 

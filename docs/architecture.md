@@ -6,7 +6,7 @@
 |---|---|
 | `web` (nginx) | Serves the built React app and proxies `/api` to the API. Sets security headers and rate-limits login. |
 | `api` (FastAPI) | REST API under `/api/v1`, authentication, permissions, and audit. |
-| `worker` (Celery) | Parses uploaded scans and renders reports, so large files never block requests. |
+| `worker` (Celery) | Parses uploaded scans and renders reports, so large files never block requests. Also runs the scheduler (beat) for risk-acceptance expiry and daily maintenance; run one replica. |
 | `db` (PostgreSQL) | All application data. Uses `inet`/`cidr` types with GiST indexes for range queries. |
 | `redis` | Task queue. |
 | `storage` volume | Original `.nessus` files (for re-import) and generated report files. |
@@ -23,7 +23,11 @@ scans ──< scan_hosts >── assets (ip inet, hostname, os, criticality, tag
   └──────────< finding_occurrences >───┘  (one row per finding per scan)
                                        └──< finding_events (timeline: detected, status, assign, comment)
 
-report_templates ──< report_jobs        audit_logs (append-only)
+findings ──< risk_acceptances (pending → approved → expired/revoked)
+plugins  ──< suppression_rules (optional cidr / port)
+sla_policies (default + per zone)   saved_views   notifications   app_settings
+
+report_templates ──< report_jobs        audit_logs (append-only, retention job)
 ```
 
 - A **finding** is unique per `(asset, plugin, port, protocol)`, so the same vulnerability on two ports is two findings.
@@ -53,6 +57,15 @@ After all hosts are processed, **auto-fix** closes active findings on covered ho
 - this host scan was uncredentialed but the finding was last seen by a credentialed scan.
 
 `risk_accepted` and `false_positive` are never changed by imports.
+
+After auto-fix, the importer also applies enabled **suppression rules** to the imported hosts, expires overdue **risk acceptances**, and recomputes **SLA due dates** for the imported hosts.
+
+## Remediation workflow
+
+- **SLA**: `due_date = first_seen + days(severity)` from the zone's policy, or the default policy. `findings.due_source` is `sla` or `manual`; policy changes only touch `sla` dates. Dates are recomputed when policies, network ranges, or zones change.
+- **Risk acceptance**: an approved request moves the finding to `risk_accepted` and records the previous status. Expiry (hourly job, and on every import) or revocation restores it. Approvers cannot approve their own request unless `risk_self_approval` is on. Setting the status directly to `risk_accepted` is rejected.
+- **Suppression rules** mark matching findings `false_positive` with a timeline event. Deleting or disabling a rule reopens findings whose latest status change came from that rule.
+- **Notifications** are rows per user. @mentions only notify users who can see the finding under their network scope.
 
 Deleting a scan reverts the status changes it caused, removes findings that only it observed, and recomputes seen-dates from the remaining occurrences.
 

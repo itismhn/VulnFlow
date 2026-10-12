@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, Archive, Loader2, ScanLine, Search } from "lucide-react";
+import { AlertTriangle, Archive, GitCompare, Loader2, ScanLine, Search } from "lucide-react";
 import { useState } from "react";
 import { SeverityCounters, SeverityStrip } from "@/components/severity";
 import { Badge, Card, EmptyState, Input, PageHeader, Pagination, Skeleton } from "@/components/ui/primitives";
@@ -44,6 +44,14 @@ export function ScansPage() {
       <PageHeader
         title="Scan history"
         description="Every imported scan, newest first. Each import updates finding status for the hosts it covered."
+        actions={
+          <Link
+            to="/scans/compare"
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3.5 text-sm font-medium transition hover:bg-surface-2"
+          >
+            <GitCompare className="size-4" /> Compare scans
+          </Link>
+        }
       />
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative w-80">

@@ -60,3 +60,26 @@ def generate_report_task(job_id: int) -> None:
             job.error = str(exc)[:2000]
         job.finished_at = datetime.now(UTC)
         db.commit()
+
+
+@celery.task(name="maintenance.expire_risk")
+def expire_risk_task() -> int:
+    from app.services.risk import expire_due
+
+    with SessionLocal() as db:
+        count = expire_due(db)
+        db.commit()
+    if count:
+        log.info("Expired %s risk acceptances", count)
+    return count
+
+
+@celery.task(name="maintenance.daily")
+def daily_maintenance_task() -> dict[str, int]:
+    from app.services.maintenance import run_daily
+
+    with SessionLocal() as db:
+        result = run_daily(db)
+        db.commit()
+    log.info("Daily maintenance: %s", result)
+    return result

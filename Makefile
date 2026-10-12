@@ -22,7 +22,7 @@ api:  ## Run the API with auto-reload on :8000
 	cd $(BACKEND) && .venv/bin/uvicorn app.main:app --reload --port 8000
 
 worker:  ## Run the background worker (imports and reports)
-	cd $(BACKEND) && .venv/bin/celery -A app.workers.celery_app worker --loglevel=info --pool threads --concurrency 4
+	cd $(BACKEND) && .venv/bin/celery -A app.workers.celery_app worker --beat --schedule /tmp/rm-celerybeat-schedule --loglevel=info --pool threads --concurrency 4
 
 web:  ## Run the web UI with hot reload on :5173
 	cd $(FRONTEND) && pnpm dev

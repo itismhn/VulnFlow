@@ -165,11 +165,12 @@ export interface Finding {
   reopen_count: number;
   assignee: UserBrief | null;
   due_date: string | null;
+  due_source: "sla" | "manual" | null;
 }
 
 export interface FindingEvent {
   id: number;
-  kind: "detected" | "status" | "assign" | "comment";
+  kind: "detected" | "status" | "assign" | "comment" | "risk";
   from_status: string | null;
   to_status: string | null;
   note: string;
@@ -370,4 +371,101 @@ export interface SearchHit {
   id: number;
   title: string;
   subtitle: string;
+}
+
+export interface SlaPolicy {
+  id: number;
+  zone: string | null;
+  critical_days: number;
+  high_days: number;
+  medium_days: number;
+  low_days: number;
+  enabled: boolean;
+  updated_at: string;
+}
+
+export type AcceptanceStatus = "pending" | "approved" | "rejected" | "expired" | "revoked";
+
+export interface RiskAcceptance {
+  id: number;
+  finding_id: number;
+  status: AcceptanceStatus;
+  justification: string;
+  expires_at: string;
+  previous_status: FindingStatus;
+  requested_by: UserBrief | null;
+  decided_by: UserBrief | null;
+  decided_at: string | null;
+  decision_note: string;
+  created_at: string;
+}
+
+export interface RiskAcceptanceRow extends RiskAcceptance {
+  finding: Finding;
+}
+
+export interface SuppressionRule {
+  id: number;
+  plugin_id: number;
+  plugin_name: string;
+  cidr: string | null;
+  port: number | null;
+  reason: string;
+  enabled: boolean;
+  created_by: UserBrief | null;
+  created_at: string;
+  matched: number;
+}
+
+export interface SavedView {
+  id: number;
+  name: string;
+  shared: boolean;
+  query: Record<string, unknown>;
+  owner: UserBrief;
+  updated_at: string;
+}
+
+export interface AppNotification {
+  id: number;
+  kind: "mention" | "assigned" | "risk_requested" | "risk_decided" | "risk_expired";
+  title: string;
+  body: string;
+  link: string;
+  actor: UserBrief | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface AppSettings {
+  risk_self_approval: boolean;
+  risk_max_days: number;
+  audit_retention_days: number;
+  branding_company: string;
+  branding_classification: string;
+}
+
+export interface SlaRow {
+  key: string;
+  total: number;
+  met: number;
+  breached: number;
+  open_overdue: number;
+  compliance: number | null;
+}
+
+export interface MttrRow {
+  key: string;
+  fixed: number;
+  mttr_days: number | null;
+}
+
+export interface Metrics {
+  sla_overall: SlaRow;
+  sla_by_severity: SlaRow[];
+  sla_by_zone: SlaRow[];
+  mttr_by_severity: MttrRow[];
+  mttr_by_zone: MttrRow[];
+  mttr_by_owner: MttrRow[];
+  velocity: { week: string; opened: number; fixed: number }[];
 }

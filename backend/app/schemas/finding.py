@@ -93,6 +93,7 @@ class FindingOut(ORM):
     reopen_count: int
     assignee: UserBrief | None
     due_date: date | None
+    due_source: str | None = None
 
 
 class OccurrenceOut(BaseModel):
@@ -125,6 +126,7 @@ class FindingUpdate(BaseModel):
     assignee_id: int | None = None
     clear_assignee: bool = False
     due_date: date | None = None
+    clear_due_date: bool = False
     note: str = Field(default="", max_length=5000)
 
 
