@@ -92,7 +92,9 @@ class Finding(Timestamps, Base):
     plugin_output: Mapped[str] = mapped_column(Text, default="")
     last_scan_id: Mapped[int | None] = mapped_column(ForeignKey("scans.id", ondelete="SET NULL"))
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
-    due_date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date, index=True)
+    # "sla" dates follow policy changes; "manual" dates are never overwritten
+    due_source: Mapped[str | None] = mapped_column(String(8))
 
     asset: Mapped[Asset] = relationship(lazy="joined")
     plugin: Mapped[Plugin] = relationship(lazy="joined")

@@ -60,3 +60,20 @@ class FindingEventKind(StrEnum):
     STATUS = "status"
     ASSIGN = "assign"
     COMMENT = "comment"
+    RISK = "risk"
+
+
+class AcceptanceStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+
+
+class NotificationKind(StrEnum):
+    MENTION = "mention"
+    ASSIGNED = "assigned"
+    RISK_REQUESTED = "risk_requested"
+    RISK_DECIDED = "risk_decided"
+    RISK_EXPIRED = "risk_expired"

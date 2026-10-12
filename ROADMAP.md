@@ -33,18 +33,21 @@ Have a suggestion? [Open a feature request](https://github.com/itismhn/report-ma
 - ✅ Command palette search, dark mode, responsive layout
 - ✅ Synthetic demo data generator
 
-## Phase 2: v0.2 Remediation workflow 📋
+## Phase 2: v0.2 Remediation workflow ✅
 
-- 📋 **SLA policies**: days to remediate per severity, optionally per zone or criticality; automatic due dates and overdue alerts
-- 📋 **Risk acceptance workflow**: request → approval by a second admin, expiry date, automatic revert to open
-- 📋 **Scan diff page**: list (not just count) new, fixed, and persisting findings between any two scans
-- 📋 **Saved views**: personal and shared filter presets on the findings page
-- 📋 **My work** page: findings assigned to me, sorted by due date
-- 📋 Comments with @mentions and in-app notifications
-- 📋 False positive "apply to all hosts" for a plugin, with a reason
-- 📋 Metrics: SLA compliance %, MTTR per zone and owner team, remediation velocity
-- 📋 Audit log export (CSV) and retention setting
-- 📋 Admin settings page (session lifetime, password policy, branding defaults)
+- ✅ **SLA policies**: days to remediate per severity, with a default policy and per-zone overrides; automatic due dates that follow policy changes; manual dates are kept; overdue and due-soon badges
+- ✅ **Risk acceptance workflow**: request with justification and expiry → approval by a second admin (self-approval is a setting) → automatic revert when it expires or is revoked
+- ✅ **Scan compare page**: lists (not just counts) new, fixed, and persisting findings between any two scans
+- ✅ **Saved views**: personal and shared filter presets on the findings page
+- ✅ **My work** page: findings assigned to me, grouped by deadline
+- ✅ Comments with @mentions and in-app notifications (mentions, assignments, risk requests, decisions, expiries)
+- ✅ False positive on all hosts for a plugin, optionally limited to a range or port; also applied to future imports
+- ✅ Metrics: SLA compliance %, time to fix per severity, zone and owner team, weekly detected vs fixed
+- ✅ Audit log date filters, CSV export, and retention setting with a daily clean-up job
+- ✅ Admin settings page: SLA policies, false-positive rules, risk-acceptance limits, audit retention, branding defaults
+- 📋 SLA overrides by asset criticality (in addition to zone)
+- 📋 Email or chat alerts for overdue findings (in-app badges only today)
+- 📋 Password policy and session lifetimes editable in the UI (environment variables today)
 
 ## Phase 3: v0.3 Reporting & intelligence 📋
 

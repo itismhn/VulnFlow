@@ -23,6 +23,7 @@ from app.models import (
     ScanHost,
     User,
 )
+from app.models.enums import NotificationKind
 from app.schemas.common import Page
 from app.schemas.finding import (
     BulkUpdate,
@@ -38,6 +39,7 @@ from app.schemas.finding import (
 from app.services.exporting import SEVERITY_LABELS, finding_rows
 from app.services.finding_actions import update_finding
 from app.services.findings_query import apply_filters, apply_sort, base_query, severity_counts_expr
+from app.services.notifications import notify
 from app.services.reporting.xlsx import rows_to_xlsx, safe_cell
 
 router = APIRouter(prefix="/findings", tags=["findings"])
@@ -253,7 +255,16 @@ def patch_finding(finding_id: int, body: FindingUpdate, request: Request, user: 
 @router.post("/bulk", response_model=dict[str, int])
 def bulk_update(body: BulkUpdate, request: Request, user: Editor, db: DB) -> dict[str, int]:
     findings = list(db.scalars(base_query(user).where(Finding.id.in_(body.ids))).unique())
-    changed = sum(update_finding(db, f, body, user) for f in findings)
+    changed = sum(update_finding(db, f, body, user, notify_users=False) for f in findings)
+    if changed and body.assignee_id and not body.clear_assignee:
+        notify(
+            db,
+            [body.assignee_id],
+            NotificationKind.ASSIGNED,
+            f"{user.username} assigned {changed} findings to you",
+            link="/my-work",
+            actor=user,
+        )
     audit(
         db,
         "finding.bulk_updated",

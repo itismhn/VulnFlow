@@ -10,6 +10,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.services.reporting.builtin import ensure_builtin_templates
+from app.services.sla import ensure_default_policy
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -22,6 +23,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         raise RuntimeError("Set RM_SECRET_KEY to a random string of at least 32 characters")
     with SessionLocal() as db:
         ensure_builtin_templates(db)
+        ensure_default_policy(db)
     yield
 
 

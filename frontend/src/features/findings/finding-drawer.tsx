@@ -1,16 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ExternalLink, Flame } from "lucide-react";
+import { ExternalLink, EyeOff, Flame, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { SeverityBadge, StatusBadge } from "@/components/severity";
 import { Drawer } from "@/components/ui/overlay";
 import { Badge, Button, Field, Input, Select, Skeleton, Textarea } from "@/components/ui/primitives";
+import { DueDate } from "@/features/workflow/due-date";
+import { RiskRequestDialog } from "@/features/workflow/risk-dialog";
+import { SuppressDialog } from "@/features/workflow/suppress-dialog";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useDirectory } from "@/lib/queries";
-import type { FindingDetail, FindingStatus } from "@/lib/types";
-import { cn, daysSince, fmtDate, fmtRelative, STATUS_LABELS, severityLabel } from "@/lib/utils";
+import type { FindingDetail, FindingStatus, RiskAcceptance } from "@/lib/types";
+import {
+  ACTIVE_STATUSES,
+  cn,
+  daysSince,
+  fmtDate,
+  fmtRelative,
+  STATUS_LABELS,
+  severityLabel,
+} from "@/lib/utils";
 
 export function FindingDrawer({ id, onClose }: { id: number | undefined; onClose: () => void }) {
   const { data, isLoading } = useQuery({
@@ -40,6 +51,12 @@ export function FindingDrawer({ id, onClose }: { id: number | undefined; onClose
                 </Badge>
               )}
               {data.reopen_count > 0 && <Badge tone="warn">Reopened {data.reopen_count}×</Badge>}
+              <DueDate
+                date={data.due_date}
+                source={data.due_source}
+                active={ACTIVE_STATUSES.includes(data.status)}
+                className="ml-auto"
+              />
             </div>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
               <Fact label="Host">
@@ -73,6 +90,7 @@ export function FindingDrawer({ id, onClose }: { id: number | undefined; onClose
             key={`${data.id}-${data.status}-${data.assignee?.id}-${data.due_date}`}
             finding={data}
           />
+          <RiskPanel finding={data} />
 
           <div className="flex gap-1 border-b border-line px-5" role="tablist">
             {(
@@ -230,6 +248,8 @@ function History({ finding: f }: { finding: FindingDetail }) {
                 )
               ) : e.kind === "assign" ? (
                 <strong>{e.note.split(":")[0]}</strong>
+              ) : e.kind === "risk" ? (
+                <strong>Risk acceptance</strong>
               ) : (
                 <strong>Comment</strong>
               )}
@@ -271,6 +291,13 @@ function FindingActions({ finding: f }: { finding: FindingDetail }) {
   const { can, me } = useAuth();
   const qc = useQueryClient();
   const { data: users = [] } = useDirectory(can("findings:update"));
+  const [riskOpen, setRiskOpen] = useState(false);
+  const [suppressOpen, setSuppressOpen] = useState(false);
+  const { data: acceptances = [] } = useQuery({
+    queryKey: ["risk", "finding", f.id],
+    queryFn: () => api.get<RiskAcceptance[]>(`/risk-acceptances/finding/${f.id}`),
+  });
+  const riskOpenRequest = acceptances.some((r) => r.status === "pending" || r.status === "approved");
   const [status, setStatus] = useState<FindingStatus>(f.status);
   const [note, setNote] = useState("");
   const [assignee, setAssignee] = useState(f.assignee?.id ?? 0);
@@ -285,6 +312,7 @@ function FindingActions({ finding: f }: { finding: FindingDetail }) {
         due_date: due && due !== f.due_date ? due : undefined,
         note,
       }),
+    onError: (e: Error) => toast.error(e.message),
     onSuccess: () => {
       toast.success("Finding updated");
       setNote("");
@@ -294,12 +322,22 @@ function FindingActions({ finding: f }: { finding: FindingDetail }) {
     },
   });
 
+  const resetDue = useMutation({
+    mutationFn: () => api.patch(`/findings/${f.id}`, { clear_due_date: true }),
+    onSuccess: () => {
+      toast.success("Due date follows the SLA policy again");
+      qc.invalidateQueries({ queryKey: ["finding", f.id] });
+      qc.invalidateQueries({ queryKey: ["findings"] });
+    },
+  });
+
   if (!can("findings:update")) return null;
-  const needsNote = (status === "risk_accepted" || status === "false_positive") && status !== f.status;
+  const needsNote = status === "false_positive" && status !== f.status;
   const dirty =
     status !== f.status || assignee !== (f.assignee?.id ?? 0) || due !== (f.due_date ?? "") || note.trim();
+  // Risk acceptance goes through the request/approval flow, not the status picker
   const statusOptions = (Object.keys(STATUS_LABELS) as FindingStatus[]).filter(
-    (s) => s !== "risk_accepted" || me?.role === "admin" || f.status === "risk_accepted",
+    (s) => s !== "risk_accepted" || f.status === "risk_accepted",
   );
 
   return (
@@ -324,27 +362,51 @@ function FindingActions({ finding: f }: { finding: FindingDetail }) {
             ))}
           </Select>
         </Field>
-        <Field label="Due date">
+        <Field
+          label="Due date"
+          hint={
+            f.due_source === "manual" ? (
+              <button type="button" className="text-brand hover:underline" onClick={() => resetDue.mutate()}>
+                Reset to SLA policy
+              </button>
+            ) : f.due_source === "sla" ? (
+              "Set by SLA policy"
+            ) : undefined
+          }
+        >
           <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
         </Field>
       </div>
       <Field
-        label={needsNote ? "Justification (required)" : "Comment"}
+        label={needsNote ? "Reason (required)" : "Comment"}
         error={needsNote && !note.trim() ? "Explain why, for the audit trail" : null}
       >
         <Textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder={
-            needsNote ? "Why is this accepted or a false positive?" : "Add a note for the team (optional)"
+            needsNote
+              ? "Why is this a false positive?"
+              : "Add a note for the team. Type @username to notify someone."
           }
           className="min-h-16"
         />
       </Field>
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {can("risk:request") && ACTIVE_STATUSES.includes(f.status) && !riskOpenRequest && (
+          <Button size="sm" variant="ghost" onClick={() => setRiskOpen(true)}>
+            <ShieldCheck className="size-3.5" /> Request risk acceptance
+          </Button>
+        )}
+        {!me?.scope_restricted && (
+          <Button size="sm" variant="ghost" onClick={() => setSuppressOpen(true)}>
+            <EyeOff className="size-3.5" /> False positive on all hosts
+          </Button>
+        )}
         <Button
           variant="primary"
           size="sm"
+          className="ml-auto"
           disabled={!dirty || (needsNote && !note.trim())}
           loading={save.isPending}
           onClick={() => save.mutate()}
@@ -352,6 +414,71 @@ function FindingActions({ finding: f }: { finding: FindingDetail }) {
           Save changes
         </Button>
       </div>
+      <RiskRequestDialog findingIds={[f.id]} open={riskOpen} onOpenChange={setRiskOpen} />
+      <SuppressDialog plugin={f.plugin} open={suppressOpen} onOpenChange={setSuppressOpen} />
+    </div>
+  );
+}
+
+const RISK_TONE = {
+  pending: "warn",
+  approved: "brand",
+  rejected: "danger",
+  expired: "neutral",
+  revoked: "neutral",
+} as const;
+
+function RiskPanel({ finding: f }: { finding: FindingDetail }) {
+  const { can, me } = useAuth();
+  const qc = useQueryClient();
+  const { data = [] } = useQuery({
+    queryKey: ["risk", "finding", f.id],
+    queryFn: () => api.get<RiskAcceptance[]>(`/risk-acceptances/finding/${f.id}`),
+  });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["risk"] });
+    qc.invalidateQueries({ queryKey: ["finding", f.id] });
+    qc.invalidateQueries({ queryKey: ["findings"] });
+  };
+  const revoke = useMutation({
+    mutationFn: (id: number) => api.post(`/risk-acceptances/${id}/revoke`, { note: "" }),
+    onSuccess: () => {
+      toast.success("Risk acceptance withdrawn");
+      refresh();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const current = data.find((r) => r.status === "pending" || r.status === "approved");
+  if (!current) return null;
+  const canRevoke =
+    current.status === "approved"
+      ? can("risk:approve")
+      : current.requested_by?.id === me?.id || can("risk:approve");
+  return (
+    <div className="flex items-start gap-3 border-b border-line px-5 py-3 text-sm">
+      <ShieldCheck className="mt-0.5 size-4 shrink-0 text-medium" />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={RISK_TONE[current.status]}>
+            {current.status === "pending" ? "Awaiting approval" : "Risk accepted"}
+          </Badge>
+          <span className="text-xs text-ink-3">
+            until {fmtDate(current.expires_at)} · requested by {current.requested_by?.username ?? "unknown"}
+            {current.decided_by && ` · approved by ${current.decided_by.username}`}
+          </span>
+        </div>
+        <p className="mt-1 text-ink-2">{current.justification}</p>
+      </div>
+      {canRevoke && (
+        <Button
+          size="sm"
+          variant="ghost"
+          loading={revoke.isPending}
+          onClick={() => revoke.mutate(current.id)}
+        >
+          {current.status === "pending" ? "Withdraw" : "Revoke"}
+        </Button>
+      )}
     </div>
   );
 }

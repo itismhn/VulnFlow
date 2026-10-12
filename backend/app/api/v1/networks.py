@@ -23,6 +23,7 @@ from app.schemas.asset import (
 )
 from app.schemas.common import SeverityCounts
 from app.services import networks as network_service
+from app.services import sla
 from app.services.scoping import asset_scope_clause
 
 router = APIRouter(prefix="/networks", tags=["networks"])
@@ -129,6 +130,7 @@ def create_network(body: NetworkCreate, request: Request, user: Manager, db: DB)
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "A network with this CIDR already exists") from exc
     network_service.reassign_assets(db)
+    sla.apply_sla(db)
     audit(
         db,
         "network.created",
@@ -157,6 +159,8 @@ def update_network(network_id: int, body: NetworkUpdate, request: Request, user:
         raise HTTPException(status.HTTP_409_CONFLICT, "A network with this CIDR already exists") from exc
     if "cidr" in changes:
         network_service.reassign_assets(db)
+    if changes.keys() & {"cidr", "zone"}:
+        sla.apply_sla(db)
     audit(
         db,
         "network.updated",
@@ -187,6 +191,7 @@ def delete_network(network_id: int, request: Request, user: Manager, db: DB) -> 
     db.delete(net)
     db.flush()
     network_service.reassign_assets(db)
+    sla.apply_sla(db)
     db.commit()
 
 
@@ -216,6 +221,7 @@ async def import_networks(file: UploadFile, request: Request, user: Manager, db:
             created += 1
         db.flush()
     network_service.reassign_assets(db)
+    sla.apply_sla(db)
     audit(
         db,
         "network.imported",

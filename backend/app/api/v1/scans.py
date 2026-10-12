@@ -2,7 +2,7 @@ import hashlib
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
@@ -17,7 +17,9 @@ from app.core.storage import scan_file_path, storage_path
 from app.models import Asset, Finding, FindingOccurrence, Scan, ScanHost, User
 from app.models.enums import FindingEventKind, ScanStatus
 from app.schemas.common import Page, SeverityCounts
+from app.schemas.finding import FindingOut
 from app.schemas.scan import ScanDiff, ScanHostOut, ScanOut, ScanUpdate, UploadResult
+from app.services.findings_query import apply_sort, base_query
 from app.services.ingest import recompute_after_scan_delete
 from app.services.parsers import ParseError, get_parser
 from app.services.scoping import asset_scope_clause
@@ -272,9 +274,8 @@ def scan_hosts(scan_id: int, user: Reader, db: DB) -> list[ScanHostOut]:
     return out
 
 
-@router.get("/{scan_id}/diff", response_model=ScanDiff)
-def diff_scans(scan_id: int, user: Reader, db: DB, against: int) -> ScanDiff:
-    """Compare findings on hosts covered by both scans (info severity excluded)."""
+def _diff_sets(db: DB, user: User, scan_id: int, against: int) -> tuple[set[int], set[int]]:
+    """Finding ids (info excluded) on hosts covered by both scans: (base, current)."""
     _get_scan(db, scan_id, user)
     _get_scan(db, against, user)
     sh_a, sh_b = aliased(ScanHost), aliased(ScanHost)
@@ -299,13 +300,43 @@ def diff_scans(scan_id: int, user: Reader, db: DB, against: int) -> ScanDiff:
             stmt = stmt.where(asset_scope_clause(user))
         return set(db.scalars(stmt))
 
-    base, current = finding_ids(against), finding_ids(scan_id)
+    return finding_ids(against), finding_ids(scan_id)
+
+
+@router.get("/{scan_id}/diff", response_model=ScanDiff)
+def diff_scans(scan_id: int, user: Reader, db: DB, against: int) -> ScanDiff:
+    """Compare findings on hosts covered by both scans (info severity excluded)."""
+    base, current = _diff_sets(db, user, scan_id, against)
     return ScanDiff(
         base_scan_id=against,
         compare_scan_id=scan_id,
         new=len(current - base),
         fixed=len(base - current),
         persisting=len(base & current),
+    )
+
+
+@router.get("/{scan_id}/diff/findings", response_model=Page[FindingOut])
+def diff_findings(
+    scan_id: int,
+    user: Reader,
+    db: DB,
+    against: int,
+    kind: Literal["new", "fixed", "persisting"],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=500)] = 50,
+) -> Page[FindingOut]:
+    base, current = _diff_sets(db, user, scan_id, against)
+    ids = {"new": current - base, "fixed": base - current, "persisting": base & current}[kind]
+    if not ids:
+        return Page(items=[], total=0, page=page, page_size=page_size)
+    rows = db.scalars(
+        apply_sort(base_query(user).where(Finding.id.in_(ids)), "-severity")
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).unique()
+    return Page(
+        items=[FindingOut.model_validate(f) for f in rows], total=len(ids), page=page, page_size=page_size
     )
 
 

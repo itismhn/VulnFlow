@@ -32,7 +32,7 @@ Report Manager turns a pile of scan exports into a managed, auditable vulnerabil
   - an uncredentialed scan never closes findings from a credentialed one;
   - plugin families disabled in the scan policy are never closed.
 - Out-of-order imports of older scans are handled correctly.
-- Manual statuses: in progress, risk accepted (admin only, justification required), false positive. Imports never touch them.
+- Manual statuses: in progress, risk accepted (through approval), false positive. Imports never touch them.
 
 **Explore & manage**
 - Findings explorer with shareable URL filters: severity, status, **IP or CIDR**, network, zone, CVE, port, plugin family, CVSS, exploitability, overdue, and scan.
@@ -41,6 +41,14 @@ Report Manager turns a pile of scan exports into a managed, auditable vulnerabil
 - Asset inventory with a risk score (severity-weighted, scaled by business criticality), scan timeline, and tags.
 - Vulnerability view: where a given CVE or plugin exists across the estate.
 - `⌘K` search across IPs, hostnames, CVEs, plugin IDs, and scans.
+
+**Remediation workflow**
+- **SLA policies** per severity, with per-zone overrides. Due dates are set automatically, follow policy changes, and show overdue and due-soon badges. Manual dates are kept.
+- **Risk acceptance** with justification and expiry, approved by a second admin. The finding reopens automatically when it expires.
+- **False positive on all hosts**: one rule suppresses a plugin everywhere, in a range, or on a port, including future imports.
+- **My work** for assignees, **@mentions** in comments, and an in-app notification centre.
+- **Saved views**, personal or shared, and a **scan compare** page listing new, fixed, and persisting findings between any two scans.
+- **Remediation metrics**: SLA compliance, time to fix by severity, zone, and owner team, and weekly detected vs fixed.
 
 **Networks (IP ranges)**
 - Name ranges and zones (Core Banking, Cards/PCI, DMZ, Branch…), set criticality and owner, or import them from CSV.
@@ -57,7 +65,7 @@ Report Manager turns a pile of scan exports into a managed, auditable vulnerabil
 **Access control & audit**
 - Local accounts with three roles: **Admin**, **Analyst**, and **Viewer**.
 - **Network scoping**: restrict a user to specific ranges. Every query, export, and report respects it.
-- Append-only **audit log** covering sign-ins, failed logins, imports, status changes, exports, downloads, and admin actions.
+- Append-only **audit log** covering sign-ins, failed logins, imports, status changes, exports, downloads, and admin actions, with CSV export and a retention setting.
 
 | Findings by network | Finding detail (dark mode) |
 |---|---|
@@ -164,7 +172,7 @@ Found a vulnerability? Please follow [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-Planned work, including SLA policies, scan diff views, KEV/EPSS enrichment, scheduled reports, Tenable API sync, Jira/ServiceNow, and LDAP/SSO, is tracked in [ROADMAP.md](ROADMAP.md).
+Planned work, including KEV/EPSS enrichment, a report template builder, scheduled reports, Tenable API sync, Jira/ServiceNow, and LDAP/SSO, is tracked in [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 

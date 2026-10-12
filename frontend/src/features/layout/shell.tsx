@@ -1,8 +1,11 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  BadgeCheck,
   Boxes,
   Bug,
+  ClipboardList,
   FileText,
+  Gauge,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -12,6 +15,7 @@ import {
   ScanLine,
   ScrollText,
   Search,
+  Settings,
   Sun,
   Upload,
   UserRound,
@@ -23,6 +27,7 @@ import { DropdownMenu, MenuItem, MenuLabel, MenuSeparator } from "@/components/u
 import { Button, Kbd } from "@/components/ui/primitives";
 import { CommandPalette } from "@/features/layout/command-palette";
 import { UploadDialog } from "@/features/scans/upload-dialog";
+import { NotificationBell } from "@/features/workflow/notification-bell";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -37,12 +42,17 @@ interface NavItem {
 const NAV: { title: string; items: NavItem[] }[] = [
   {
     title: "Overview",
-    items: [{ to: "/", label: "Dashboard", icon: <LayoutDashboard /> }],
+    items: [
+      { to: "/", label: "Dashboard", icon: <LayoutDashboard /> },
+      { to: "/metrics", label: "Remediation metrics", icon: <Gauge /> },
+    ],
   },
   {
     title: "Vulnerability management",
     items: [
+      { to: "/my-work", label: "My work", icon: <ClipboardList />, perm: "findings:update" },
       { to: "/findings", label: "Findings", icon: <ListChecks /> },
+      { to: "/approvals", label: "Risk approvals", icon: <BadgeCheck /> },
       { to: "/vulnerabilities", label: "Vulnerabilities", icon: <Bug /> },
       { to: "/assets", label: "Assets", icon: <Boxes /> },
       { to: "/networks", label: "Networks", icon: <Network /> },
@@ -60,6 +70,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     items: [
       { to: "/admin/users", label: "Users", icon: <Users />, perm: "users:manage" },
       { to: "/admin/audit", label: "Audit log", icon: <ScrollText />, perm: "audit:read" },
+      { to: "/admin/settings", label: "Settings", icon: <Settings />, perm: "settings:manage" },
     ],
   },
 ];
@@ -176,6 +187,7 @@ export function AppShell() {
                 <span className="hidden sm:inline">Import scan</span>
               </Button>
             )}
+            <NotificationBell />
             <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle colour theme">
               {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
             </Button>

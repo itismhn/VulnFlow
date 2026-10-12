@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.2.0]: remediation workflow
+
+### Added
+- SLA policies (default and per zone) with automatic due dates, overdue and due-soon badges, and "reset to SLA" for manual dates.
+- Risk-acceptance requests with justification and expiry, a separate approver (four-eyes by default), revocation, and automatic expiry back to the previous status.
+- False-positive rules that suppress a plugin on all hosts, a range, or a port, including in future imports. Deleting a rule reopens what it suppressed.
+- Scan compare page listing new, fixed, and persisting findings between any two scans.
+- Saved views on the findings page, personal or shared.
+- My work page with assigned findings grouped by deadline.
+- @mentions in comments and an in-app notification centre.
+- Remediation metrics: SLA compliance, time to fix by severity, zone, and owner, and weekly velocity.
+- Admin settings page; audit log date filters, CSV export, and retention.
+- Scheduled jobs (Celery beat in the worker) for risk expiry and daily maintenance.
+
+### Changed
+- Findings can no longer be set to "Risk accepted" directly; use the request and approval flow.
+- Analysts can request risk acceptance; only admins approve.
+
 ## [0.1.0]: first public release
 
 ### Added

@@ -1,7 +1,8 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import { useState } from "react";
-import { Card, Input, PageHeader, Pagination, Select } from "@/components/ui/primitives";
-import { api } from "@/lib/api";
+import { Button, Card, Input, PageHeader, Pagination, Select } from "@/components/ui/primitives";
+import { api, downloadUrl } from "@/lib/api";
 import { useDebounced } from "@/lib/hooks";
 import type { AuditEntry, Page } from "@/lib/types";
 import { cn, fmtDate } from "@/lib/utils";
@@ -16,16 +17,29 @@ const ACTION_GROUPS = [
   "report",
   "template",
   "asset",
+  "risk",
+  "suppression",
+  "sla_policy",
+  "settings",
+  "audit",
 ];
 
 export function AuditPage() {
   const [actor, setActor] = useState("");
   const [action, setAction] = useState("");
+  const [since, setSince] = useState("");
+  const [until, setUntil] = useState("");
   const [page, setPage] = useState(1);
   const dActor = useDebounced(actor);
+  // Dates are inclusive days in the browser's timezone
+  const range = {
+    since: since ? new Date(`${since}T00:00:00`).toISOString() : undefined,
+    until: until ? new Date(new Date(`${until}T00:00:00`).getTime() + 86_400_000).toISOString() : undefined,
+  };
+  const query = { actor: dActor, action, ...range };
   const { data } = useQuery({
-    queryKey: ["audit", dActor, action, page],
-    queryFn: () => api.get<Page<AuditEntry>>("/audit", { actor: dActor, action, page, page_size: 50 }),
+    queryKey: ["audit", query, page],
+    queryFn: () => api.get<Page<AuditEntry>>("/audit", { ...query, page, page_size: 50 }),
     placeholderData: keepPreviousData,
   });
 
@@ -34,6 +48,11 @@ export function AuditPage() {
       <PageHeader
         title="Audit log"
         description="Append-only record of sign-ins, imports, status changes, exports and administrative actions."
+        actions={
+          <Button onClick={() => window.location.assign(downloadUrl("/audit/export", query))}>
+            <Download className="size-4" /> Export CSV
+          </Button>
+        }
       />
       <div className="mb-3 flex flex-wrap gap-2">
         <Input
@@ -60,6 +79,28 @@ export function AuditPage() {
             </option>
           ))}
         </Select>
+        <Input
+          type="date"
+          value={since}
+          max={until || undefined}
+          onChange={(e) => {
+            setSince(e.target.value);
+            setPage(1);
+          }}
+          className="w-40"
+          aria-label="From date"
+        />
+        <Input
+          type="date"
+          value={until}
+          min={since || undefined}
+          onChange={(e) => {
+            setUntil(e.target.value);
+            setPage(1);
+          }}
+          className="w-40"
+          aria-label="To date"
+        />
       </div>
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -85,7 +126,7 @@ export function AuditPage() {
                     <span
                       className={cn(
                         "rounded px-1.5 py-0.5 font-mono text-xs",
-                        /failed|locked|reuse|deleted/.test(e.action)
+                        /failed|locked|reuse|deleted|revoked|purged/.test(e.action)
                           ? "bg-critical/10 text-critical"
                           : "bg-surface-2 text-ink-2",
                       )}

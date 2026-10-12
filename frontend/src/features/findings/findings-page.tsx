@@ -15,12 +15,15 @@ import {
   Select,
   Skeleton,
 } from "@/components/ui/primitives";
+import { DueDate } from "@/features/workflow/due-date";
+import { RiskRequestDialog } from "@/features/workflow/risk-dialog";
+import { SavedViewsMenu } from "@/features/workflow/saved-views";
 import { api, downloadUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useDirectory } from "@/lib/queries";
 import { type FindingsSearch, filtersOf, hasFilters } from "@/lib/search";
 import type { Finding, FindingGroup, FindingStatus, GroupBy, Page } from "@/lib/types";
-import { cn, daysSince, fmtDate, fmtNum, STATUS_LABELS } from "@/lib/utils";
+import { ACTIVE_STATUSES, cn, daysSince, fmtDate, fmtNum, STATUS_LABELS } from "@/lib/utils";
 import { ActiveFilterChips, FilterBar } from "./filter-bar";
 import { FindingDrawer } from "./finding-drawer";
 
@@ -104,6 +107,7 @@ export function FindingsPage({ search }: { search: FindingsSearch }) {
         description="Every vulnerability instance on every host, tracked across scans."
         actions={
           <>
+            <SavedViewsMenu search={search} onApply={(query) => navigate({ search: query })} />
             <DropdownMenu
               trigger={
                 <Button>
@@ -378,16 +382,13 @@ function FindingTable({
               </td>
               <td className="px-3 py-2 text-xs text-ink-2">
                 {f.assignee?.username ?? <span className="text-ink-3">—</span>}
-                {f.due_date && (
-                  <div
-                    className={cn(
-                      "text-[11px]",
-                      new Date(f.due_date) < new Date() ? "text-critical" : "text-ink-3",
-                    )}
-                  >
-                    due {fmtDate(f.due_date)}
-                  </div>
-                )}
+                <div>
+                  <DueDate
+                    date={f.due_date}
+                    source={f.due_source}
+                    active={ACTIVE_STATUSES.includes(f.status)}
+                  />
+                </div>
               </td>
             </tr>
           ))}
@@ -457,12 +458,14 @@ function GroupList({
 
 function BulkBar({ ids, onDone }: { ids: number[]; onDone: () => void }) {
   const qc = useQueryClient();
+  const { can } = useAuth();
+  const [riskOpen, setRiskOpen] = useState(false);
   const { data: users = [] } = useDirectory();
   const [status, setStatus] = useState<FindingStatus | "">("");
   const [assignee, setAssignee] = useState("");
   const [due, setDue] = useState("");
   const [note, setNote] = useState("");
-  const needsNote = status === "risk_accepted" || status === "false_positive";
+  const needsNote = status === "false_positive";
   const apply = useMutation({
     mutationFn: () =>
       api.post<{ updated: number }>("/findings/bulk", {
@@ -473,6 +476,7 @@ function BulkBar({ ids, onDone }: { ids: number[]; onDone: () => void }) {
         due_date: due || undefined,
         note,
       }),
+    onError: (e: Error) => toast.error(e.message),
     onSuccess: (r) => {
       toast.success(`Updated ${r.updated} findings`);
       qc.invalidateQueries({ queryKey: ["findings"] });
@@ -489,11 +493,13 @@ function BulkBar({ ids, onDone }: { ids: number[]; onDone: () => void }) {
         className="h-8 w-40 text-xs"
       >
         <option value="">Keep status</option>
-        {(Object.keys(STATUS_LABELS) as FindingStatus[]).map((s) => (
-          <option key={s} value={s}>
-            {STATUS_LABELS[s]}
-          </option>
-        ))}
+        {(Object.keys(STATUS_LABELS) as FindingStatus[])
+          .filter((s) => s !== "risk_accepted")
+          .map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </option>
+          ))}
       </Select>
       <Select value={assignee} onChange={(e) => setAssignee(e.target.value)} className="h-8 w-40 text-xs">
         <option value="">Keep assignee</option>
@@ -526,9 +532,15 @@ function BulkBar({ ids, onDone }: { ids: number[]; onDone: () => void }) {
       >
         Apply
       </Button>
+      {can("risk:request") && (
+        <Button size="sm" variant="ghost" onClick={() => setRiskOpen(true)}>
+          Request risk acceptance
+        </Button>
+      )}
       <Button size="sm" variant="ghost" onClick={onDone}>
         Cancel
       </Button>
+      <RiskRequestDialog findingIds={ids} open={riskOpen} onOpenChange={setRiskOpen} onDone={onDone} />
     </div>
   );
 }

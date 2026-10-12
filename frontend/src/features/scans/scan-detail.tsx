@@ -214,8 +214,16 @@ export function ScanDetailPage({ id }: { id: number }) {
                   tone="text-ink"
                 />
               </div>
-              {!previous && (
+              {!previous ? (
                 <p className="mt-2 text-xs text-ink-3">No earlier scan of these hosts to compare with.</p>
+              ) : (
+                <Link
+                  to="/scans/compare"
+                  search={{ base: previous.id, compare: scan.id }}
+                  className="mt-2 inline-block text-xs text-brand hover:underline"
+                >
+                  See the findings in each group →
+                </Link>
               )}
             </Card>
           </div>

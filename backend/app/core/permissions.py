@@ -17,6 +17,9 @@ class Perm(StrEnum):
     TEMPLATES_MANAGE = "templates:manage"
     USERS_MANAGE = "users:manage"
     AUDIT_READ = "audit:read"
+    RISK_REQUEST = "risk:request"
+    RISK_APPROVE = "risk:approve"
+    SETTINGS_MANAGE = "settings:manage"
 
 
 _VIEWER = {
@@ -32,6 +35,7 @@ _ANALYST = _VIEWER | {
     Perm.ASSETS_UPDATE,
     Perm.NETWORKS_MANAGE,
     Perm.TEMPLATES_MANAGE,
+    Perm.RISK_REQUEST,
 }
 
 ROLE_PERMISSIONS: dict[str, frozenset[Perm]] = {
