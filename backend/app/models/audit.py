@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DDL, BigInteger, DateTime, String, event, func
+from sqlalchemy import DDL, BigInteger, DateTime, Index, String, event, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +12,8 @@ class AuditLog(Base):
     """Append-only record of every security-relevant action."""
 
     __tablename__ = "audit_logs"
+    # Per-IP sign-in throttling counts recent failures by source address
+    __table_args__ = (Index("ix_audit_logs_ip_created_at", "ip", "created_at"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(

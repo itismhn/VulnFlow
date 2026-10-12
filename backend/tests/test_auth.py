@@ -6,8 +6,9 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import REFRESH_COOKIE
-from app.models import AuditLog
+from app.core.db import SessionLocal
+from app.core.security import ACCESS_COOKIE, REFRESH_COOKIE
+from app.models import AuditLog, User
 from app.models.enums import Role
 from app.services.maintenance import purge_audit
 from tests.conftest import PASSWORD, ApiClient, login, make_user
@@ -27,8 +28,43 @@ def test_wrong_password_and_lockout(client: ApiClient) -> None:
     for _ in range(settings.max_failed_logins):
         r = client.post("/api/v1/auth/login", json={"username": "admin", "password": "nope"})
         assert r.status_code == 401
+    # Even the right password is refused, with the same answer as a wrong one
     r = client.post("/api/v1/auth/login", json={"username": "admin", "password": PASSWORD})
-    assert r.status_code == 401 and "locked" in r.json()["detail"]
+    assert r.status_code == 401 and r.json()["detail"] == "Invalid username or password"
+    with SessionLocal() as s:
+        assert s.scalar(select(User.locked_until).where(User.username == "admin")) is not None
+
+
+def test_failed_logins_throttled_per_ip(client: ApiClient) -> None:
+    make_user()
+    for i in range(settings.max_failed_logins_per_ip):
+        r = client.post("/api/v1/auth/login", json={"username": f"guess{i}", "password": "x"})
+        assert r.status_code == 401
+    r = client.post("/api/v1/auth/login", json={"username": "admin", "password": PASSWORD})
+    assert r.status_code == 429
+
+
+def test_forwarded_for_header_is_not_trusted(client: ApiClient) -> None:
+    client.post(
+        "/api/v1/auth/login",
+        json={"username": "ghost", "password": "x"},
+        headers={"X-Forwarded-For": "203.0.113.9"},
+    )
+    with SessionLocal() as s:
+        assert s.scalar(select(AuditLog.ip).where(AuditLog.action == "auth.login_failed")) == "testclient"
+
+
+def test_logout_ends_access_token_immediately(client: ApiClient) -> None:
+    make_user()
+    login(client)
+    access = client.cookies.get(ACCESS_COOKIE)
+    assert client.post("/api/v1/auth/refresh").status_code == 200
+    client.cookies.delete(ACCESS_COOKIE)  # so the request below authenticates with the old token
+    # Access tokens from before a rotation stay valid within the same sign-in
+    assert client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {access}"}).status_code == 200
+    assert client.post("/api/v1/auth/logout").status_code == 204
+    replay = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {access}"})
+    assert replay.status_code == 401
 
 
 def test_unknown_user_same_error(client: ApiClient) -> None:

@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -5,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import func, select, update
 
-from app.core.audit import audit
+from app.core.audit import audit, client_ip
 from app.core.config import settings
 from app.core.deps import DB, CurrentUser
 from app.core.permissions import ROLE_PERMISSIONS
@@ -20,10 +21,11 @@ from app.core.security import (
     password_problems,
     verify_password,
 )
-from app.models import RefreshToken, User
+from app.models import AuditLog, RefreshToken, User
 from app.schemas.user import ChangePasswordIn, LoginIn, MeOut, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+log = logging.getLogger(__name__)
 
 REFRESH_PATH = "/api/v1/auth"
 
@@ -35,15 +37,21 @@ def me_out(user: User) -> MeOut:
     )
 
 
-def _issue_session(db: DB, response: Response, user: User) -> None:
+def _issue_session(db: DB, response: Response, user: User, family_id: uuid.UUID | None = None) -> None:
+    token_id = uuid.uuid4()
     refresh = RefreshToken(
-        id=uuid.uuid4(),
+        id=token_id,
+        family_id=family_id or token_id,
         user_id=user.id,
         expires_at=datetime.now(UTC) + timedelta(days=settings.refresh_token_days),
     )
     db.add(refresh)
     access = create_token(
-        str(user.id), "access", timedelta(minutes=settings.access_token_minutes), role=user.role
+        str(user.id),
+        "access",
+        timedelta(minutes=settings.access_token_minutes),
+        role=user.role,
+        sid=str(refresh.family_id),
     )
     refresh_jwt = create_token(
         str(user.id), "refresh", timedelta(days=settings.refresh_token_days), jti=str(refresh.id)
@@ -75,10 +83,27 @@ def login(body: LoginIn, request: Request, response: Response, db: DB) -> MeOut:
     user = db.scalar(select(User).where(func.lower(User.username) == username))
     now = datetime.now(UTC)
 
+    ip = client_ip(request)
+    recent_failures = db.scalar(
+        select(func.count())
+        .select_from(AuditLog)
+        .where(
+            AuditLog.action == "auth.login_failed",
+            AuditLog.ip == ip,
+            AuditLog.created_at > now - timedelta(minutes=settings.lockout_minutes),
+        )
+    )
+    if ip and (recent_failures or 0) >= settings.max_failed_logins_per_ip:
+        log.warning("Throttled sign-in from %s after %s failures", ip, recent_failures)
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed sign-in attempts. Try again later."
+        )
+
     if user and user.locked_until and user.locked_until > now:
         audit(db, "auth.login_locked", request=request, user=user, entity_type="user", entity_id=user.id)
         db.commit()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account temporarily locked. Try again later.")
+        # Same answer as a wrong password, so a locked account doesn't reveal that it exists
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
 
     if not verify_password(body.password, user.password_hash if user else None) or not user:
         if user:
@@ -136,7 +161,7 @@ def refresh(request: Request, response: Response, db: DB) -> MeOut:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired")
 
     stored.revoked_at = datetime.now(UTC)
-    _issue_session(db, response, user)
+    _issue_session(db, response, user, stored.family_id)
     db.commit()
     return me_out(user)
 
@@ -147,8 +172,13 @@ def logout(request: Request, response: Response, db: DB) -> None:
     payload = decode_token(token, "refresh") if token else None
     if payload:
         stored = db.get(RefreshToken, uuid.UUID(payload["jti"]))
-        if stored and stored.revoked_at is None:
-            stored.revoked_at = datetime.now(UTC)
+        if stored:
+            # Ends the whole sign-in, so access tokens issued for it stop working too
+            db.execute(
+                update(RefreshToken)
+                .where(RefreshToken.family_id == stored.family_id, RefreshToken.revoked_at.is_(None))
+                .values(revoked_at=func.now())
+            )
         audit(db, "auth.logout", request=request, username=None, entity_type="user", entity_id=payload["sub"])
         db.commit()
     _clear_session(response)

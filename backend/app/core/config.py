@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
 
     max_failed_logins: int = 5
+    # Failed sign-ins allowed from one IP per lockout window, across all usernames
+    max_failed_logins_per_ip: int = 20
     lockout_minutes: int = 15
     password_min_length: int = 12
 

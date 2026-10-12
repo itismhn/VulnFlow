@@ -273,3 +273,10 @@ def test_network_map(loaded: ApiClient) -> None:
         "10.10.0.0/24",
         "10.40.0.0/24",
     }
+
+
+@pytest.mark.parametrize("value", ["=1+1", "+1", "-1+2", "@SUM(A1)", "\t=1", "\r=1"])
+def test_safe_cell_neutralizes_formulas(value: str) -> None:
+    from app.services.reporting.xlsx import safe_cell
+
+    assert safe_cell(value) == "'" + value

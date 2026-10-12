@@ -7,12 +7,11 @@ from app.models import AuditLog, User
 
 
 def client_ip(request: Request | None) -> str:
-    if request is None:
+    # X-Forwarded-For is resolved by uvicorn --proxy-headers behind the bundled proxy;
+    # reading it here would let any client forge the address it is logged under.
+    if request is None or request.client is None:
         return ""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else ""
+    return request.client.host
 
 
 def audit(

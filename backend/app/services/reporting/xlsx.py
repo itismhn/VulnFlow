@@ -12,7 +12,7 @@ _HEADER_FILL = PatternFill("solid", fgColor="1E293B")
 
 def safe_cell(value: Any) -> Any:
     # Neutralize spreadsheet formula injection from scan content
-    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + value
     if isinstance(value, str) and len(value) > 32000:
         return value[:32000] + "…"
