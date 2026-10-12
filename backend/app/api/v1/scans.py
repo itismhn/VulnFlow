@@ -14,8 +14,8 @@ from app.core.config import settings
 from app.core.deps import DB, require
 from app.core.permissions import Perm
 from app.core.storage import scan_file_path, storage_path
-from app.models import Asset, Finding, FindingOccurrence, Scan, ScanHost, User
-from app.models.enums import FindingEventKind, ScanStatus
+from app.models import Asset, Finding, FindingEvent, FindingOccurrence, Scan, ScanHost, User
+from app.models.enums import FindingEventKind, FindingStatus, ScanStatus
 from app.schemas.common import Page, SeverityCounts
 from app.schemas.finding import FindingOut
 from app.schemas.scan import ScanDiff, ScanHostOut, ScanOut, ScanUpdate, UploadResult
@@ -54,6 +54,64 @@ def _get_scan(db: DB, scan_id: int, user: User) -> Scan:
     return scan
 
 
+def _scan_out(db: DB, user: User, scans: list[Scan]) -> list[ScanOut]:
+    """Serialize scans; a scope-restricted user gets counts for their own hosts only."""
+    out = [ScanOut.model_validate(s) for s in scans]
+    if not user.scope_restricted or not out:
+        return out
+    ids = [s.id for s in out]
+    scope = asset_scope_clause(user)
+    hosts = dict(
+        db.execute(
+            select(ScanHost.scan_id, func.count())
+            .join(Asset, Asset.id == ScanHost.asset_id)
+            .where(ScanHost.scan_id.in_(ids), scope)
+            .group_by(ScanHost.scan_id)
+        ).all()
+    )
+    severities: dict[int, dict[int, int]] = {}
+    for sid, severity, n in db.execute(
+        select(FindingOccurrence.scan_id, FindingOccurrence.severity, func.count())
+        .join(Finding, Finding.id == FindingOccurrence.finding_id)
+        .join(Asset, Asset.id == Finding.asset_id)
+        .where(FindingOccurrence.scan_id.in_(ids), scope)
+        .group_by(FindingOccurrence.scan_id, FindingOccurrence.severity)
+    ):
+        severities.setdefault(sid, {})[severity] = n
+    # new / fixed / reopened mirror the events the import recorded for this scan
+    changes: dict[int | None, dict[str, int]] = {}
+    for event_scan, kind, to_status, n in db.execute(
+        select(FindingEvent.scan_id, FindingEvent.kind, FindingEvent.to_status, func.count())
+        .join(Finding, Finding.id == FindingEvent.finding_id)
+        .join(Asset, Asset.id == Finding.asset_id)
+        .where(
+            FindingEvent.scan_id.in_(ids),
+            FindingEvent.kind.in_([FindingEventKind.DETECTED, FindingEventKind.STATUS]),
+            scope,
+        )
+        .group_by(FindingEvent.scan_id, FindingEvent.kind, FindingEvent.to_status)
+    ):
+        key = "new" if kind == FindingEventKind.DETECTED else to_status
+        if key in ("new", FindingStatus.FIXED, FindingStatus.REOPENED):
+            bucket = changes.setdefault(event_scan, {})
+            bucket[key] = bucket.get(key, 0) + n
+    for scan in out:
+        sev = severities.get(scan.id, {})
+        chg = changes.get(scan.id, {})
+        scan.host_count = hosts.get(scan.id, 0)
+        scan.info_count = sev.get(0, 0)
+        scan.low_count = sev.get(1, 0)
+        scan.medium_count = sev.get(2, 0)
+        scan.high_count = sev.get(3, 0)
+        scan.critical_count = sev.get(4, 0)
+        scan.finding_count = sum(v for k, v in sev.items() if k > 0)
+        scan.new_count = chg.get("new", 0)
+        scan.fixed_count = chg.get(FindingStatus.FIXED, 0)
+        scan.reopened_count = chg.get(FindingStatus.REOPENED, 0)
+        scan.skipped_hosts = 0
+    return out
+
+
 @router.get("", response_model=Page[ScanOut])
 def list_scans(
     user: Reader,
@@ -79,7 +137,7 @@ def list_scans(
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
-    return Page(items=[ScanOut.model_validate(s) for s in rows], total=total, page=page, page_size=page_size)
+    return Page(items=_scan_out(db, user, list(rows)), total=total, page=page, page_size=page_size)
 
 
 async def _save_upload(upload: UploadFile) -> tuple[Path, str, int]:
@@ -156,12 +214,12 @@ async def upload_scans(
 
 
 @router.get("/{scan_id}", response_model=ScanOut)
-def get_scan(scan_id: int, user: Reader, db: DB) -> Scan:
-    return _get_scan(db, scan_id, user)
+def get_scan(scan_id: int, user: Reader, db: DB) -> ScanOut:
+    return _scan_out(db, user, [_get_scan(db, scan_id, user)])[0]
 
 
 @router.patch("/{scan_id}", response_model=ScanOut)
-def update_scan(scan_id: int, body: ScanUpdate, request: Request, user: Uploader, db: DB) -> Scan:
+def update_scan(scan_id: int, body: ScanUpdate, request: Request, user: Uploader, db: DB) -> ScanOut:
     scan = _get_scan(db, scan_id, user)
     changes = body.model_dump(exclude_unset=True)
     for key, value in changes.items():
@@ -170,11 +228,11 @@ def update_scan(scan_id: int, body: ScanUpdate, request: Request, user: Uploader
         db, "scan.updated", request=request, user=user, entity_type="scan", entity_id=scan.id, details=changes
     )
     db.commit()
-    return scan
+    return _scan_out(db, user, [scan])[0]
 
 
 @router.post("/{scan_id}/reparse", response_model=ScanOut)
-def reparse_scan(scan_id: int, request: Request, user: Manager, db: DB) -> Scan:
+def reparse_scan(scan_id: int, request: Request, user: Manager, db: DB) -> ScanOut:
     scan = _get_scan(db, scan_id, user)
     if scan.status in (ScanStatus.QUEUED, ScanStatus.PARSING):
         raise HTTPException(status.HTTP_409_CONFLICT, "Scan is already being processed")
@@ -184,7 +242,7 @@ def reparse_scan(scan_id: int, request: Request, user: Manager, db: DB) -> Scan:
     db.commit()
     ingest_scan_task.delay(scan.id)
     db.refresh(scan)
-    return scan
+    return _scan_out(db, user, [scan])[0]
 
 
 @router.delete("/{scan_id}", status_code=204)
@@ -341,13 +399,13 @@ def diff_findings(
 
 
 @router.get("/{scan_id}/previous", response_model=ScanOut | None)
-def previous_scan(scan_id: int, user: Reader, db: DB) -> Scan | None:
+def previous_scan(scan_id: int, user: Reader, db: DB) -> ScanOut | None:
     """Most recent earlier scan that shares at least one host with this one."""
     scan = _get_scan(db, scan_id, user)
     if scan.started_at is None:
         return None
     sh_a, sh_b = aliased(ScanHost), aliased(ScanHost)
-    return db.scalar(
+    previous = db.scalar(
         select(Scan)
         .where(
             Scan.id != scan.id,
@@ -364,3 +422,4 @@ def previous_scan(scan_id: int, user: Reader, db: DB) -> Scan | None:
         .order_by(Scan.started_at.desc())
         .limit(1)
     )
+    return _scan_out(db, user, [previous])[0] if previous else None
