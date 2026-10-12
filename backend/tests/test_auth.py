@@ -1,6 +1,15 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.security import REFRESH_COOKIE
+from app.models import AuditLog
 from app.models.enums import Role
+from app.services.maintenance import purge_audit
 from tests.conftest import PASSWORD, ApiClient, login, make_user
 
 
@@ -88,3 +97,25 @@ def test_viewer_cannot_manage(client: ApiClient) -> None:
     assert client.get("/api/v1/users").status_code == 403
     assert client.post("/api/v1/networks", json={"name": "n", "cidr": "10.0.0.0/8"}).status_code == 403
     assert client.get("/api/v1/findings").status_code == 200
+
+
+def test_audit_log_is_append_only_in_database(db: Session) -> None:
+    db.add_all(
+        [
+            AuditLog(action="auth.login", created_at=datetime.now(UTC) - timedelta(days=800)),
+            AuditLog(action="auth.login"),
+        ]
+    )
+    db.commit()
+    for stmt in (update(AuditLog).values(action="tampered"), delete(AuditLog)):
+        with pytest.raises(DBAPIError, match="append-only"):
+            db.execute(stmt)
+        db.rollback()
+
+    # Retention purge may still remove expired rows, and only those
+    assert purge_audit(db) == 1
+    db.commit()
+    assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action == "auth.login")) == 1
+    with pytest.raises(DBAPIError, match="append-only"):
+        db.execute(delete(AuditLog))
+    db.rollback()

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequirePerm } from "@/components/states";
 import { MyWorkPage } from "@/features/workflow/my-work-page";
 
 export const Route = createFileRoute("/_app/my-work")({
@@ -6,6 +7,10 @@ export const Route = createFileRoute("/_app/my-work")({
     finding: Number(s.finding) || undefined,
   }),
   component: function MyWorkRoute() {
-    return <MyWorkPage finding={Route.useSearch().finding} />;
+    return (
+      <RequirePerm perm="findings:update">
+        <MyWorkPage finding={Route.useSearch().finding} />
+      </RequirePerm>
+    );
   },
 });

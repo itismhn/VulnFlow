@@ -290,16 +290,17 @@ def render_report(db: Session, job: ReportJob) -> Path:
             if job.format == ReportFormat.HTML:
                 data = html.encode()
             else:
+                # Missing system libraries surface as OSError, at import or at render time
                 try:
                     from weasyprint import HTML  # heavy import, only when needed
+
+                    data = HTML(string=html, base_url=str(TEMPLATE_DIR)).write_pdf()
                 except OSError as exc:
                     raise RuntimeError(
-                        "PDF output needs the Pango system library. It is included in the Docker image; "
-                        "on macOS run `brew install pango`, on Debian/Ubuntu `apt install libpango-1.0-0 "
-                        "libpangoft2-1.0-0`. HTML, Excel and CSV formats work without it."
+                        "PDF output isn't available on this server (the Pango library is missing). "
+                        "Choose HTML, Excel or CSV, or ask an administrator to install Pango "
+                        "(it is included in the Docker image)."
                     ) from exc
-
-                data = HTML(string=html, base_url=str(TEMPLATE_DIR)).write_pdf()
 
     path = report_file_path(job.id, job.format)
     path.write_bytes(data)
