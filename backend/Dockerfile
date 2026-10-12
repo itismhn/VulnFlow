@@ -21,6 +21,13 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY . .
 RUN uv sync --frozen --no-dev \
+    # The app runs from /opt/venv; drop the base image's unused pip and bundled
+    # wheels so they don't ship known-vulnerable copies of setuptools/urllib3
+    && rm -rf /usr/local/lib/python3.13/site-packages/pip* \
+        /usr/local/lib/python3.13/site-packages/setuptools* \
+        /usr/local/lib/python3.13/ensurepip/_bundled \
+        /usr/local/lib/python3.13/test/wheeldata \
+        /usr/local/bin/pip* \
     && useradd --system --uid 10001 --home /app app \
     && mkdir -p /data && chown -R app /data
 
