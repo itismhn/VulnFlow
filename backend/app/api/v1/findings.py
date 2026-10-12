@@ -214,11 +214,25 @@ def get_finding(finding_id: int, user: Reader, db: DB) -> FindingDetail:
         .where(FindingOccurrence.finding_id == finding.id)
         .order_by(ScanHost.started_at.desc().nulls_last())
     )
-    events = db.scalars(
-        select(FindingEvent)
-        .where(FindingEvent.finding_id == finding.id)
-        .order_by(FindingEvent.created_at.desc(), FindingEvent.id.desc())
-    )
+    events = [
+        EventOut.model_validate(e)
+        for e in db.scalars(
+            select(FindingEvent)
+            .where(FindingEvent.finding_id == finding.id)
+            .order_by(FindingEvent.created_at.desc(), FindingEvent.id.desc())
+        )
+    ]
+    scan_ids = {e.scan_id for e in events if e.scan_id}
+    if scan_ids:
+        scans = {
+            sid: (name, started)
+            for sid, name, started in db.execute(
+                select(Scan.id, Scan.name, Scan.started_at).where(Scan.id.in_(scan_ids))
+            )
+        }
+        for e in events:
+            if e.scan_id in scans:
+                e.scan_name, e.scan_at = scans[e.scan_id]
     detail = FindingDetail.model_validate(
         {
             **FindingOut.model_validate(finding).model_dump(),
@@ -228,7 +242,7 @@ def get_finding(finding_id: int, user: Reader, db: DB) -> FindingDetail:
                 OccurrenceOut(scan_id=o[0], scan_name=o[1], observed_at=o[2], severity=o[3])
                 for o in occurrences
             ],
-            "events": [EventOut.model_validate(e) for e in events],
+            "events": events,
         }
     )
     return detail

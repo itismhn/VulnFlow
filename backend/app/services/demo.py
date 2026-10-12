@@ -386,7 +386,7 @@ def write_nessus(
             fields: list[tuple[str, str]] = [
                 ("risk_factor", risk),
                 ("synopsis", f"Synthetic demo finding: {v.name}."),
-                ("description", f"This is fictional demo data describing '{v.name}' on {h.hostname}."),
+                ("description", f"This is fictional demo data describing '{v.name}'."),
                 ("solution", "Apply the vendor-recommended update or configuration change."),
                 ("plugin_output", f"Demo output for {h.ip}:{v.port}\nDetected by synthetic generator."),
                 ("plugin_publication_date", "2020/01/15"),

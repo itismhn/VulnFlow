@@ -137,11 +137,8 @@ export function AuditPage() {
                   <td className="px-4 py-2 font-mono text-xs text-ink-2">
                     {e.entity_type ? `${e.entity_type}#${e.entity_id}` : "—"}
                   </td>
-                  <td
-                    className="max-w-md truncate px-4 py-2 font-mono text-[11px] text-ink-3"
-                    title={JSON.stringify(e.details)}
-                  >
-                    {Object.keys(e.details).length ? JSON.stringify(e.details) : ""}
+                  <td className="max-w-md px-4 py-2">
+                    <AuditDetails details={e.details} />
                   </td>
                   <td className="px-4 py-2 font-mono text-xs text-ink-3">{e.ip}</td>
                 </tr>
@@ -152,5 +149,31 @@ export function AuditPage() {
         {data && <Pagination page={page} pageSize={50} total={data.total} onChange={setPage} />}
       </Card>
     </div>
+  );
+}
+
+function detailValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (Array.isArray(value)) return value.map(detailValue).join(", ");
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
+function AuditDetails({ details }: { details: Record<string, unknown> }) {
+  const entries = Object.entries(details);
+  if (!entries.length) return null;
+  return (
+    <dl className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+      {entries.map(([key, value]) => {
+        const text = detailValue(value);
+        return (
+          <div key={key} className="flex min-w-0 max-w-full gap-1">
+            <dt className="shrink-0 text-ink-3">{key.replaceAll("_", " ")}</dt>
+            <dd className="truncate text-ink-2" title={text}>
+              {text}
+            </dd>
+          </div>
+        );
+      })}
+    </dl>
   );
 }

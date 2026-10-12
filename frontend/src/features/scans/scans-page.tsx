@@ -104,7 +104,8 @@ export function ScansPage() {
                   <th className="px-4 py-2 font-medium">Scan</th>
                   <th className="px-4 py-2 font-medium">Scanned</th>
                   <th className="px-4 py-2 text-right font-medium">Hosts</th>
-                  <th className="w-44 px-4 py-2 font-medium">Severity mix</th>
+                  {/* Duplicates the counters, so it only shows when there is room */}
+                  <th className="hidden w-44 px-4 py-2 font-medium xl:table-cell">Severity mix</th>
                   <th className="px-4 py-2 font-medium">
                     <span className="flex gap-3 font-mono">
                       <span className="w-8 text-right">C</span>
@@ -138,7 +139,7 @@ export function ScansPage() {
                       <div className="text-ink-3">by {s.uploaded_by?.username ?? "—"}</div>
                     </td>
                     <td className="num px-4 py-2.5 text-right font-mono">{fmtNum(s.host_count)}</td>
-                    <td className="px-4 py-2.5">
+                    <td className="hidden px-4 py-2.5 xl:table-cell">
                       <SeverityStrip counts={scanCounts(s)} />
                     </td>
                     <td className="px-4 py-2.5">

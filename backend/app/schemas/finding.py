@@ -110,6 +110,9 @@ class EventOut(ORM):
     to_status: str | None
     note: str
     scan_id: int | None
+    # For events caused by an import: the scan and when it ran (created_at is the import time)
+    scan_name: str | None = None
+    scan_at: datetime | None = None
     actor: UserBrief | None
     created_at: datetime
 

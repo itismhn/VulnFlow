@@ -175,6 +175,8 @@ export interface FindingEvent {
   to_status: string | null;
   note: string;
   scan_id: number | null;
+  scan_name: string | null;
+  scan_at: string | null;
   actor: UserBrief | null;
   created_at: string;
 }

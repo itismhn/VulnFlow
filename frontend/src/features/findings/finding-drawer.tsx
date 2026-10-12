@@ -271,8 +271,17 @@ function History({ finding: f }: { finding: FindingDetail }) {
               )}
             </div>
             <div className="mt-0.5 text-xs text-ink-3">
-              {e.actor ? e.actor.username : e.scan_id ? `Scan #${e.scan_id}` : "System"} ·{" "}
-              {fmtDate(e.created_at, true)}
+              {e.actor ? (
+                e.actor.username
+              ) : e.scan_id ? (
+                <Link to="/scans/$scanId" params={{ scanId: String(e.scan_id) }} className="hover:text-brand">
+                  {e.scan_name ?? `Scan #${e.scan_id}`}
+                </Link>
+              ) : (
+                "System"
+              )}{" "}
+              · {/* Import-driven events show when the scan ran, not when it was imported */}
+              {e.kind === "detected" ? fmtDate(f.first_seen, true) : fmtDate(e.scan_at ?? e.created_at, true)}
             </div>
           </li>
         ))}
