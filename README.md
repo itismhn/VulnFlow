@@ -71,34 +71,52 @@ Report Manager turns a pile of scan exports into a managed, auditable vulnerabil
 |---|---|
 | ![Findings](docs/screenshots/findings-by-network.jpg) | ![Detail](docs/screenshots/finding-detail-dark.jpg) |
 
-## Quick start (Docker)
+## Installation
 
-Requirements: Docker with Compose v2.
+Report Manager runs as five services: PostgreSQL, Redis, the API, a background worker, and the web UI (nginx). Docker is the easiest way to run them all. You can also run them directly on a host.
+
+### Option A: Docker (recommended)
+
+Requirements: Docker with Compose v2, `make`, and `openssl`.
 
 ```bash
 git clone https://github.com/itismhn/report-management.git
 cd report-management
-cp .env.example .env
+make docker-env     # writes .env with random RM_SECRET_KEY and POSTGRES_PASSWORD
+make docker-up      # builds images, runs migrations, starts everything
+make docker-admin   # creates the first admin and prints a temporary password
 ```
 
-Edit `.env` and set `RM_SECRET_KEY` (e.g. `openssl rand -hex 48`) and `POSTGRES_PASSWORD`. If you are not serving over HTTPS yet, set `RM_COOKIE_SECURE=false`.
+Open <http://localhost:8080> and sign in as `admin`. You will be asked to change the password.
+
+`make docker-env` sets `RM_COOKIE_SECURE=false` so sign-in works over plain `http://`. Once TLS is in front of the app, set it to `true` in `.env` and run `make docker-up` again.
+
+**Want to look around first?** `make docker-demo` loads fictional data: five networks and four monthly scans.
+
+Day-to-day Docker commands:
+
+| Command | What it does |
+|---|---|
+| `make docker-up` | Build and start, or apply changes after `git pull` / editing `.env` (migrations run automatically) |
+| `make docker-down` | Stop the stack. Data volumes are kept |
+| `make docker-ps` | Container status and health |
+| `make docker-logs` | Follow logs from all containers |
+| `make docker-backup` | Dump the database to `backups/` |
+
+Without `make`, use Compose directly. Always pass `--env-file .env`, or Compose cannot resolve `POSTGRES_PASSWORD`:
 
 ```bash
-make docker-up
-docker compose -f deploy/docker-compose.yml exec api python -m app.cli create-admin
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
+docker compose -f deploy/docker-compose.yml --env-file .env exec api python -m app.cli create-admin
 ```
 
-Open <http://localhost:8080> and sign in with the temporary password printed by `create-admin`. You will be asked to change it.
+Data lives in the named volumes `pgdata` (database), `storage` (uploaded scans and generated reports), and `redisdata`. `docker compose down -v` **deletes them**.
 
-**Want to look around first?** Load fictional demo data, with five networks and four monthly scans:
+### Option B: Without Docker
 
-```bash
-docker compose -f deploy/docker-compose.yml exec api python -m app.cli seed-demo
-```
+Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node 22+, pnpm, PostgreSQL 16+, Redis, and Pango for PDF reports (`brew install pango` on macOS, `apt install libpango-1.0-0 libpangoft2-1.0-0` on Debian/Ubuntu). HTML, Excel, and CSV reports work without Pango.
 
-## Local development
-
-Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node 22+, pnpm, PostgreSQL 16+, and Redis.
+**Development setup** (hot reload, default settings, no `.env` needed):
 
 ```bash
 make install     # backend + frontend dependencies
@@ -124,13 +142,63 @@ make web
 
 The UI runs at <http://localhost:5173> and the API docs at <http://localhost:8000/api/docs>.
 
-PDF output needs the Pango library (`brew install pango` on macOS). HTML, Excel, and CSV work without it.
+**Production on a host:**
 
-```bash
-make test        # backend test suite (uses the rm_test database)
-make lint        # ruff + biome
-make typecheck   # mypy + tsc
-```
+1. Create a database and user in PostgreSQL, and make sure Redis is running.
+2. Copy `.env.example` to `backend/.env`. Set `RM_SECRET_KEY`, uncomment `RM_DATABASE_URL` and `RM_REDIS_URL`, and point them at your services. Set `RM_STORAGE_DIR` to a directory outside the web root.
+3. Install and migrate: `cd backend && uv sync --no-dev && .venv/bin/alembic upgrade head`, then `.venv/bin/python -m app.cli create-admin`.
+4. Run the API with `.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers`, and run the worker with the command from `make worker`. Use systemd or a similar tool to keep both running. Run **one** worker only, because it also runs the scheduler.
+5. Build the UI with `cd frontend && pnpm install && pnpm build`, and serve `frontend/dist` with nginx. Use [frontend/nginx.conf](frontend/nginx.conf) as the template, changing `proxy_pass http://api:8000` to `http://127.0.0.1:8000`.
+
+## Usage
+
+1. **Add networks** (*Networks*): name your IP ranges and zones, set criticality and owner, or import them from CSV. Assets are matched to the most specific range.
+2. **Import scans** (**Import scan** in the top bar): in Nessus, export a scan as **.nessus**, then drag one or more files in. Parsing runs in the background. *Scan history* shows progress and, per scan, the new, fixed, and persisting findings.
+3. **Work the findings** (*Findings*, *Vulnerabilities*, *Assets*): filter by severity, network, status, or CVE. Assign owners, set due dates, comment, accept risks, or mark false positives. Assignees see their queue under *My work*; risk acceptances wait in *Risk approvals*.
+4. **Report** (*Reports*): pick a template, scope, and format (PDF, XLSX, CSV, HTML).
+5. **Administer** (*Users*, *Settings*, *Audit log*): create users with the Admin, Analyst, or Viewer role and restrict them to networks, set SLA policies and branding, and review the audit log.
+
+Press `⌘K` / `Ctrl+K` anywhere to search IPs, hostnames, CVEs, plugins, and scans.
+
+## Help
+
+### Make commands
+
+Run `make help` to list every target. The main ones are `install`, `migrate`, `api`, `worker`, `web`, `demo`, `test`, `lint`, `typecheck`, and the `docker-*` targets above.
+
+### Admin CLI
+
+Run these inside `backend/` with `.venv/bin/python -m app.cli …`, or in Docker with `make docker-admin` / `docker compose … exec api python -m app.cli …`:
+
+| Command | What it does |
+|---|---|
+| `create-admin [--username admin] [--email …] [--password …]` | Create an admin. A random temporary password is printed if you omit one |
+| `seed-demo [--months 4] [--hosts-per-network 12]` | Load demo networks and synthetic scans into the database |
+| `demo-files [--out demo-data]` | Write synthetic `.nessus` files to try the upload flow |
+| `--help` | Show all commands and options |
+
+### Configuration
+
+All settings are environment variables with the `RM_` prefix. See [.env.example](.env.example) for the full list. The ones you will most likely change:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `RM_SECRET_KEY` | (none) | **Required** in production, at least 32 characters. Signs session tokens |
+| `RM_ENVIRONMENT` | `development` | `production` disables API docs and enforces the secret check |
+| `RM_COOKIE_SECURE` | `false` | Set to `true` when served over HTTPS |
+| `RM_DATABASE_URL` / `RM_REDIS_URL` | localhost | Built automatically in Docker |
+| `RM_MAX_UPLOAD_MB` | `1024` | Keep `client_max_body_size` in nginx.conf in sync |
+| `HTTP_PORT` | `8080` | Docker only: host port for the UI |
+
+### Troubleshooting
+
+- **Sign-in succeeds but you land back on the login page:** you are on plain `http://` with `RM_COOKIE_SECURE=true`. Set it to `false`, or put HTTPS in front.
+- **`api` keeps restarting with "Set RM_SECRET_KEY…":** the key is missing, still `change-me`, or shorter than 32 characters.
+- **`required variable POSTGRES_PASSWORD is missing`:** you ran `docker compose` without `--env-file .env`. Use the `make docker-*` targets.
+- **API cannot connect to the database after changing `POSTGRES_PASSWORD`:** the database volume keeps the original password. Change it back, or update the password inside PostgreSQL.
+- **Upload stuck in "queued":** the worker is not running. Check `make docker-logs` (Docker) or the `make worker` terminal.
+- **PDF reports fail outside Docker:** install Pango (see requirements above).
+- **Port 8080 already in use:** set `HTTP_PORT` in `.env` and run `make docker-up` again.
 
 ## Architecture
 

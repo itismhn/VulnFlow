@@ -10,7 +10,7 @@ Thanks for helping improve Report Manager.
 
 ## Setup
 
-Follow **Local development** in the [README](README.md). Run these before you open a pull request:
+Follow **Option B: Without Docker → Development setup** in the [README](README.md). Run these before you open a pull request:
 
 ```bash
 make lint

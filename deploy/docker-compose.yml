@@ -1,13 +1,19 @@
 # Production-style stack. From the repo root:
-#   cp .env.example .env   # then edit secrets
-#   docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
-#   docker compose -f deploy/docker-compose.yml exec api python -m app.cli create-admin
+#   make docker-env        # creates .env with random secrets (or copy .env.example)
+#   make docker-up         # build and start
+#   make docker-admin      # create the first admin account
+# Without make, always pass --env-file so ${POSTGRES_PASSWORD} resolves:
+#   docker compose -f deploy/docker-compose.yml --env-file .env <command>
 name: report-manager
 
 x-backend: &backend
   build: ../backend
   image: report-manager-api:latest
   env_file: ../.env
+  # Derived from POSTGRES_PASSWORD so the two can never drift apart
+  environment:
+    RM_DATABASE_URL: postgresql+psycopg://report_manager:${POSTGRES_PASSWORD}@db:5432/report_manager
+    RM_REDIS_URL: redis://redis:6379/0
   restart: unless-stopped
   volumes:
     - storage:/data
@@ -75,6 +81,10 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/"]
+      interval: 15s
+      retries: 5
 
 volumes:
   pgdata:

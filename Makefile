@@ -1,11 +1,13 @@
-.PHONY: help install dev-db migrate api worker web test lint typecheck demo docker-up docker-down
+.PHONY: help install dev-db migrate api worker web test lint typecheck demo \
+	docker-env docker-up docker-down docker-ps docker-logs docker-admin docker-demo docker-backup
 
 BACKEND := backend
 FRONTEND := frontend
 PY := $(BACKEND)/.venv/bin
+COMPOSE := docker compose -f deploy/docker-compose.yml --env-file .env
 
 help:  ## Show available commands
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 install:  ## Install backend (uv) and frontend (pnpm) dependencies
 	cd $(BACKEND) && uv sync
@@ -41,8 +43,33 @@ typecheck:  ## Type-check backend and frontend
 	cd $(BACKEND) && .venv/bin/mypy app
 	cd $(FRONTEND) && pnpm exec tsc --noEmit
 
-docker-up:  ## Build and start the production stack
-	docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
+docker-env:  ## Create .env with random secrets (for plain-http trial use)
+	@test ! -f .env || { echo ".env already exists, not overwriting"; exit 1; }
+	sed -e "s/^RM_SECRET_KEY=.*/RM_SECRET_KEY=$$(openssl rand -hex 48)/" \
+		-e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$$(openssl rand -hex 24)/" \
+		-e "s/^RM_COOKIE_SECURE=.*/RM_COOKIE_SECURE=false/" \
+		.env.example > .env
+	@echo "Wrote .env. RM_COOKIE_SECURE=false: set it to true once you serve over HTTPS."
 
-docker-down:  ## Stop the production stack
-	docker compose -f deploy/docker-compose.yml --env-file .env down
+docker-up:  ## Build and start the production stack
+	$(COMPOSE) up -d --build
+
+docker-down:  ## Stop the production stack (data volumes are kept)
+	$(COMPOSE) down
+
+docker-ps:  ## Show container status
+	$(COMPOSE) ps
+
+docker-logs:  ## Follow logs of all containers
+	$(COMPOSE) logs -f --tail=100
+
+docker-admin:  ## Create the first admin account in the Docker stack
+	$(COMPOSE) exec api python -m app.cli create-admin
+
+docker-demo:  ## Load demo data into the Docker stack
+	$(COMPOSE) exec api python -m app.cli seed-demo
+
+docker-backup:  ## Dump the database to backups/ (uploaded files live in the storage volume)
+	@mkdir -p backups
+	$(COMPOSE) exec -T db pg_dump -U report_manager -Fc report_manager > backups/report_manager-$$(date +%Y%m%d-%H%M%S).dump
+	@ls -lh backups | tail -1

@@ -32,3 +32,6 @@ backend/.dev-credentials
 # Local tooling
 .claude/
 *.tsbuildinfo
+
+# Database dumps from make docker-backup
+backups/
