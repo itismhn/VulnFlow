@@ -1,0 +1,138 @@
+@import "tailwindcss";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans-condensed/500.css";
+@import "@fontsource/ibm-plex-sans-condensed/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Tokens. Severity colours are reserved for risk; the brand teal is reserved for
+ * actions, so a button can never be mistaken for a severity.
+ */
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef1f4;
+  --ink: #0e1a2b;
+  --ink-2: #44546a;
+  --ink-3: #7a8799;
+  --line: #dde3ea;
+  --brand: #0e7490;
+  --brand-ink: #ffffff;
+  --brand-soft: #e0f2f6;
+  --sev-critical: #b91c1c;
+  --sev-high: #c2410c;
+  --sev-medium: #ca8a04;
+  --sev-low: #2563eb;
+  --sev-info: #94a3b8;
+  --sev-none: #e2e8f0;
+  --ok: #15803d;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: #0b1320;
+  --surface: #111c2d;
+  --surface-2: #17243a;
+  --ink: #e6edf5;
+  --ink-2: #a8b6c8;
+  --ink-3: #6f8098;
+  --line: #22324a;
+  --brand: #22a3c3;
+  --brand-ink: #04121a;
+  --brand-soft: #0f2f3b;
+  --sev-critical: #ef4444;
+  --sev-high: #f97316;
+  --sev-medium: #eab308;
+  --sev-low: #60a5fa;
+  --sev-info: #64748b;
+  --sev-none: #1c2b42;
+  --ok: #22c55e;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-critical: var(--sev-critical);
+  --color-high: var(--sev-high);
+  --color-medium: var(--sev-medium);
+  --color-low: var(--sev-low);
+  --color-info: var(--sev-info);
+  --color-none: var(--sev-none);
+  --color-ok: var(--ok);
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  border-color: var(--line);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes rm-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-in {
+  animation: rm-fade-in 0.18s ease-out;
+}
+
+@keyframes rm-slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.slide-in {
+  animation: rm-slide-in 0.2s ease-out;
+}

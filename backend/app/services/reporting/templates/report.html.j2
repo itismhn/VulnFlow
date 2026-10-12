@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  :root { --brand: {{ branding.primary_color }}; }
+  @page {
+    size: A4;
+    margin: 22mm 16mm 20mm 16mm;
+    @top-center { content: "{{ branding.classification }}"; font: 600 8pt sans-serif; color: #b91c1c; letter-spacing: .08em; }
+    @bottom-left { content: "{{ (branding.footer_text or branding.company_name or app_name)|e }}"; font: 8pt sans-serif; color: #64748b; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt sans-serif; color: #64748b; }
+  }
+  @page cover { margin: 0; @top-center { content: none; } @bottom-left { content: none; } @bottom-right { content: none; } }
+  * { box-sizing: border-box; }
+  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; color: #0f172a; font-size: 9.5pt; line-height: 1.5; margin: 0; }
+  h1, h2, h3 { line-height: 1.2; margin: 0 0 .5em; }
+  h2 { font-size: 15pt; border-bottom: 2px solid var(--brand); padding-bottom: 4px; margin-top: 1.4em; }
+  h3 { font-size: 11pt; margin-top: 1em; }
+  .cover { page: cover; height: 297mm; padding: 38mm 22mm; background: linear-gradient(160deg, #0f172a 0%, #1e293b 60%, var(--brand) 160%); color: #fff; page-break-after: always; position: relative; }
+  .cover .classification { position: absolute; top: 14mm; left: 22mm; right: 22mm; font-size: 8pt; letter-spacing: .12em; color: #fca5a5; font-weight: 700; }
+  .cover .company { font-size: 11pt; letter-spacing: .1em; text-transform: uppercase; color: #cbd5e1; }
+  .cover h1 { font-size: 30pt; margin: 14mm 0 6mm; }
+  .cover .meta { margin-top: 30mm; font-size: 10pt; color: #e2e8f0; }
+  .cover .meta div { margin: 2mm 0; }
+  .cover .scope { margin-top: 10mm; padding: 4mm 5mm; border-left: 3px solid var(--brand); background: rgba(255,255,255,.06); font-size: 9pt; color: #cbd5e1; }
+  .kpis { display: flex; gap: 8px; margin: 10px 0; }
+  .kpi { flex: 1; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
+  .kpi .v { font-size: 18pt; font-weight: 700; }
+  .kpi .l { font-size: 8pt; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+  .kpi.critical .v { color: #b91c1c; } .kpi.high .v { color: #ea580c; } .kpi.medium .v { color: #ca8a04; } .kpi.low .v { color: #2563eb; }
+  .row { display: flex; gap: 16px; align-items: flex-start; }
+  .muted { color: #64748b; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 8.5pt; }
+  th { text-align: left; background: #f1f5f9; color: #334155; font-weight: 600; padding: 5px 6px; border-bottom: 1px solid #cbd5e1; }
+  td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  tr { page-break-inside: avoid; }
+  .sev { display: inline-block; padding: 1px 6px; border-radius: 3px; color: #fff; font-size: 7.5pt; font-weight: 700; text-transform: uppercase; }
+  .sev.critical { background: #b91c1c; } .sev.high { background: #ea580c; } .sev.medium { background: #ca8a04; } .sev.low { background: #2563eb; } .sev.info { background: #64748b; }
+  .vuln { page-break-inside: avoid; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; margin: 10px 0; }
+  .vuln h3 { margin: 0 0 4px; }
+  .vuln .facts { font-size: 8pt; color: #475569; margin-bottom: 6px; }
+  .vuln p { margin: 4px 0; }
+  pre { white-space: pre-wrap; word-break: break-word; font-size: 7.5pt; background: #f8fafc; padding: 6px; border-radius: 4px; }
+  .legend span { display: inline-block; margin-right: 10px; font-size: 8pt; }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  .note { background: #fffbeb; border: 1px solid #fde68a; padding: 6px 8px; border-radius: 4px; font-size: 8.5pt; }
+  .intro { white-space: pre-line; }
+  .network { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="classification">{{ branding.classification }}</div>
+  <div class="company">{{ branding.company_name or app_name }}</div>
+  <h1>{{ title }}</h1>
+  <div class="muted" style="color:#cbd5e1;font-size:12pt">
+    {% if kind == "executive" %}Executive vulnerability summary{% elif kind == "network" %}Vulnerability report by network range{% else %}Technical vulnerability report{% endif %}
+  </div>
+  <div class="meta">
+    <div>Generated: {{ generated_at.strftime("%d %B %Y, %H:%M UTC") }}</div>
+    <div>Prepared by: {{ author.full_name or author.username }}</div>
+    <div>Last scan: {{ dash.kpis.last_scan_at|dt }}</div>
+  </div>
+  <div class="scope"><strong>Scope:</strong> {{ filters|join(" · ") }}</div>
+</section>
+
+{% if "summary" in sections %}
+<h2>Summary</h2>
+{% if intro %}<p class="intro">{{ intro }}</p>{% endif %}
+<p>
+  This report covers <strong>{{ dash.kpis.assets }}</strong> assets with <strong>{{ total_open }}</strong> open findings,
+  of which <strong>{{ dash.kpis.open.critical }}</strong> are critical and <strong>{{ dash.kpis.open.high }}</strong> are high severity.
+  <strong>{{ dash.kpis.exploitable }}</strong> open findings have a publicly available exploit.
+  In the last 30 days <strong>{{ dash.kpis.new_30d }}</strong> new findings were detected and <strong>{{ dash.kpis.fixed_30d }}</strong> were remediated.
+</p>
+{% endif %}
+
+{% if "kpis" in sections %}
+<div class="kpis">
+  <div class="kpi critical"><div class="v">{{ dash.kpis.open.critical }}</div><div class="l">Critical</div></div>
+  <div class="kpi high"><div class="v">{{ dash.kpis.open.high }}</div><div class="l">High</div></div>
+  <div class="kpi medium"><div class="v">{{ dash.kpis.open.medium }}</div><div class="l">Medium</div></div>
+  <div class="kpi low"><div class="v">{{ dash.kpis.open.low }}</div><div class="l">Low</div></div>
+</div>
+<div class="kpis">
+  <div class="kpi"><div class="v">{{ dash.kpis.exploitable }}</div><div class="l">Exploitable</div></div>
+  <div class="kpi"><div class="v">{{ dash.kpis.assets_with_critical }}</div><div class="l">Assets with critical</div></div>
+  <div class="kpi"><div class="v">{{ dash.kpis.overdue }}</div><div class="l">Overdue</div></div>
+  <div class="kpi"><div class="v">{{ dash.kpis.mttr_days.critical if dash.kpis.mttr_days.critical is not none else "—" }}</div><div class="l">MTTR critical (days)</div></div>
+</div>
+{% endif %}
+
+{% if "charts" in sections %}
+<h2>Risk overview</h2>
+<div class="row">
+  <div>{{ charts.donut|safe }}</div>
+  <div style="flex:1">
+    <h3>Open findings trend</h3>
+    {{ charts.trend|safe }}
+    <div class="legend"><span><i style="background:#b91c1c"></i>Critical</span><span><i style="background:#ea580c"></i>High</span><span><i style="background:#ca8a04"></i>Medium</span></div>
+  </div>
+</div>
+<h3>Age of open findings</h3>
+{{ charts.age|safe }}
+{% endif %}
+
+{% if "top_vulns" in sections %}
+<h2>Top vulnerabilities</h2>
+<table>
+  <thead><tr><th>Severity</th><th>Vulnerability</th><th>Hosts</th><th>Exploit</th></tr></thead>
+  <tbody>
+  {% for v in dash.top_vulns[:top_n] %}
+    <tr><td><span class="sev {{ v.severity|sev_class }}">{{ v.severity|sev_label }}</span></td><td>{{ v.name }} <span class="muted">({{ v.plugin_id }})</span></td><td>{{ v.hosts }}</td><td>{{ "Yes" if v.exploit_available else "—" }}</td></tr>
+  {% else %}
+    <tr><td colspan="4" class="muted">No open findings.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if "top_hosts" in sections %}
+<h2>Most at-risk assets</h2>
+<table>
+  <thead><tr><th>IP</th><th>Hostname</th><th>Risk score</th><th>Critical</th><th>High</th></tr></thead>
+  <tbody>
+  {% for h in dash.top_hosts[:top_n] %}
+    <tr><td>{{ h.ip }}</td><td>{{ h.hostname or "—" }}</td><td>{{ h.risk_score }}</td><td>{{ h.critical }}</td><td>{{ h.high }}</td></tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">No open findings.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if "zones" in sections and dash.by_zone %}
+<h2>Exposure by network zone</h2>
+{{ charts.zones|safe }}
+<table>
+  <thead><tr><th>Zone</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th></tr></thead>
+  <tbody>
+  {% for z in dash.by_zone %}
+    <tr><td>{{ z.label }}</td><td>{{ z.critical }}</td><td>{{ z.high }}</td><td>{{ z.medium }}</td><td>{{ z.low }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if "recommendations" in sections %}
+<h2>Recommendations</h2>
+<ol>
+  {% if dash.kpis.exploitable %}<li>Prioritise the <strong>{{ dash.kpis.exploitable }}</strong> findings with known public exploits, starting with internet-facing and critical-zone assets.</li>{% endif %}
+  {% if dash.kpis.open.critical %}<li>Remediate all <strong>{{ dash.kpis.open.critical }}</strong> critical findings within the agreed SLA; track owners and due dates for each.</li>{% endif %}
+  {% if dash.top_vulns %}<li>The most widespread issue is <strong>{{ dash.top_vulns[0].name }}</strong> on {{ dash.top_vulns[0].hosts }} hosts; a single coordinated patch or configuration change would remove a large share of exposure.</li>{% endif %}
+  {% if dash.kpis.overdue %}<li><strong>{{ dash.kpis.overdue }}</strong> findings are past their due date and need escalation.</li>{% endif %}
+  <li>Re-scan remediated assets with credentialed scans to verify fixes.</li>
+</ol>
+{% endif %}
+
+{% if "details" in sections %}
+<h2>Findings in detail</h2>
+{% if truncated %}<p class="note">Output limited to the first {{ groups|length }} groups. Use the XLSX/CSV export for the full data set.</p>{% endif %}
+{% if group_by == "host" %}
+  {% for g in groups %}
+  <div class="vuln">
+    <h3>{{ g.asset.ip }} {% if g.asset.hostname %}<span class="muted">· {{ g.asset.hostname }}</span>{% endif %}</h3>
+    <div class="facts">{{ g.asset.os or "Unknown OS" }} · {{ g.count }} findings</div>
+    <table>
+      <thead><tr><th>Severity</th><th>Vulnerability</th><th>Port</th><th>Status</th><th>First seen</th></tr></thead>
+      <tbody>
+      {% for f in g.instances %}
+        <tr><td><span class="sev {{ f.severity|sev_class }}">{{ f.severity|sev_label }}</span></td><td>{{ f.plugin.name }}</td><td>{{ f.port }}/{{ f.protocol }}</td><td>{{ f.status|replace("_", " ") }}</td><td>{{ f.first_seen|dt }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+{% else %}
+  {% for g in groups %}
+  <div class="vuln">
+    <h3><span class="sev {{ g.severity|sev_class }}">{{ g.severity|sev_label }}</span> {{ g.plugin.name }}</h3>
+    <div class="facts">
+      Plugin {{ g.plugin.id }} · {{ g.plugin.family }}
+      {% if g.plugin.cvss3_base %} · CVSS v3 {{ g.plugin.cvss3_base }}{% endif %}
+      {% if g.plugin.vpr_score %} · VPR {{ g.plugin.vpr_score }}{% endif %}
+      {% if g.plugin.exploit_available %} · <strong>Exploit available</strong>{% endif %}
+      · {{ g.count }} affected instance{{ "s" if g.count != 1 }}
+      {% if g.plugin.cves %}<br>{{ g.plugin.cves[:12]|join(", ") }}{% if g.plugin.cves|length > 12 %} …{% endif %}{% endif %}
+    </div>
+    {% if g.plugin.synopsis %}<p><strong>Synopsis.</strong> {{ g.plugin.synopsis }}</p>{% endif %}
+    {% if g.plugin.description %}<p><strong>Description.</strong> {{ g.plugin.description|truncate(1500) }}</p>{% endif %}
+    {% if g.plugin.solution %}<p><strong>Solution.</strong> {{ g.plugin.solution }}</p>{% endif %}
+    <table>
+      <thead><tr><th>Host</th><th>Port</th><th>Status</th><th>First seen</th><th>Last seen</th></tr></thead>
+      <tbody>
+      {% for f in g.instances %}
+        <tr><td>{{ f.asset.ip }}{% if f.asset.hostname %} <span class="muted">({{ f.asset.hostname }})</span>{% endif %}</td><td>{{ f.port }}/{{ f.protocol }}</td><td>{{ f.status|replace("_", " ") }}</td><td>{{ f.first_seen|dt }}</td><td>{{ f.last_seen|dt }}</td></tr>
+      {% endfor %}
+      {% if g.count > g.instances|length %}<tr><td colspan="5" class="muted">… and {{ g.count - g.instances|length }} more</td></tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No findings match this report's scope.</p>
+  {% endfor %}
+{% endif %}
+{% endif %}
+
+{% if "networks" in sections %}
+{% for s in networks %}
+<section class="network">
+  <h2>{{ s.network.name }} <span class="muted" style="font-size:10pt">{{ s.network.cidr }}{% if s.network.zone %} · {{ s.network.zone }}{% endif %}</span></h2>
+  <p class="muted">Owner: {{ s.network.owner or "—" }} · Criticality {{ s.network.criticality }}/5 · {{ s.dash.kpis.assets }} assets</p>
+  <div class="kpis">
+    <div class="kpi critical"><div class="v">{{ s.dash.kpis.open.critical }}</div><div class="l">Critical</div></div>
+    <div class="kpi high"><div class="v">{{ s.dash.kpis.open.high }}</div><div class="l">High</div></div>
+    <div class="kpi medium"><div class="v">{{ s.dash.kpis.open.medium }}</div><div class="l">Medium</div></div>
+    <div class="kpi low"><div class="v">{{ s.dash.kpis.open.low }}</div><div class="l">Low</div></div>
+  </div>
+  <h3>Top vulnerabilities</h3>
+  <table>
+    <thead><tr><th>Severity</th><th>Vulnerability</th><th>Hosts</th></tr></thead>
+    <tbody>
+    {% for v in s.top_vulns %}
+      <tr><td><span class="sev {{ v.severity|sev_class }}">{{ v.severity|sev_label }}</span></td><td>{{ v.name }}</td><td>{{ v.hosts }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <h3>Most at-risk hosts</h3>
+  <table>
+    <thead><tr><th>IP</th><th>Hostname</th><th>Risk</th><th>Critical</th><th>High</th></tr></thead>
+    <tbody>
+    {% for h in s.top_hosts %}
+      <tr><td>{{ h.ip }}</td><td>{{ h.hostname or "—" }}</td><td>{{ h.risk_score }}</td><td>{{ h.critical }}</td><td>{{ h.high }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% else %}
+<p class="muted">No networks with findings in scope. Define IP ranges under Networks to use this report.</p>
+{% endfor %}
+{% endif %}
+
+</body>
+</html>

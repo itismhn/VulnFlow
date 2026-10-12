@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+
+# Node
+node_modules/
+frontend/dist/
+
+# App data — never commit scan files or generated reports
+backend/storage/
+storage/
+demo-data/
+*.nessus
+!backend/tests/fixtures/*.nessus
+
+# Secrets & local config
+.env
+.env.*
+!.env.example
+backend/.dev-credentials
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Local tooling
+.claude/
+*.tsbuildinfo

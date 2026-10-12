@@ -1,0 +1,31 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never attach real scan files, IP addresses, or hostnames from your organisation.**
+        Reproduce with the demo data (`make demo`) or redact everything sensitive.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Steps to reproduce, what you expected, and what you saw.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: v0.1.0 or commit SHA
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: How do you run it?
+      options: [Docker Compose, Local development, Other]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      render: text
