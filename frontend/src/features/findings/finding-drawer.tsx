@@ -1,11 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ExternalLink, EyeOff, Flame, ShieldCheck } from "lucide-react";
+import { ExternalLink, EyeOff, Flame, SearchX, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { SeverityBadge, StatusBadge } from "@/components/severity";
 import { Drawer } from "@/components/ui/overlay";
-import { Badge, Button, Field, Input, Select, Skeleton, Textarea } from "@/components/ui/primitives";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  Input,
+  Select,
+  Skeleton,
+  Textarea,
+} from "@/components/ui/primitives";
 import { DueDate } from "@/features/workflow/due-date";
 import { RiskRequestDialog } from "@/features/workflow/risk-dialog";
 import { SuppressDialog } from "@/features/workflow/suppress-dialog";
@@ -24,7 +33,7 @@ import {
 } from "@/lib/utils";
 
 export function FindingDrawer({ id, onClose }: { id: number | undefined; onClose: () => void }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["finding", id],
     queryFn: () => api.get<FindingDetail>(`/findings/${id}`),
     enabled: !!id,
@@ -33,7 +42,11 @@ export function FindingDrawer({ id, onClose }: { id: number | undefined; onClose
 
   return (
     <Drawer open={!!id} onOpenChange={(o) => !o && onClose()} title={data ? data.plugin.name : "Finding"}>
-      {isLoading || !data ? (
+      {isError ? (
+        <EmptyState icon={<SearchX className="size-6" />} title="Finding not found">
+          It may have been deleted, or it is outside the networks you have access to.
+        </EmptyState>
+      ) : isLoading || !data ? (
         <div className="space-y-3 p-5">
           <Skeleton className="h-6 w-2/3" />
           <Skeleton className="h-24" />

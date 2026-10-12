@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Security
+- Network-restricted users now see scan host and finding counts for their own networks only, not totals across all networks.
+- The audit log is append-only in the database: a trigger rejects updates and deletes, except the scheduled retention purge.
+- Failed reports and imports no longer show raw exception text (which could include server paths); details stay in the server logs.
+
+### Fixed
+- Findings, assets, scans, and vulnerabilities that don't exist or are outside the user's scope show a "not found" message instead of loading forever.
+- Admin pages and My work show an access-denied message to users without permission, instead of an empty page.
+- A missing Pango library now always produces a clear PDF error, including when it fails during rendering.
+
 ## [0.2.0]: remediation workflow
 
 ### Added

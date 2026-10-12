@@ -32,10 +32,14 @@ def ingest_scan_task(scan_id: int) -> None:
         except ParseError as exc:
             db.rollback()
             _set_scan(scan_id, status=ScanStatus.FAILED, error=str(exc)[:2000])
-        except Exception as exc:
+        except Exception:
             db.rollback()
             log.exception("Ingest of scan %s failed", scan_id)
-            _set_scan(scan_id, status=ScanStatus.FAILED, error=f"Import failed: {exc}"[:2000])
+            _set_scan(
+                scan_id,
+                status=ScanStatus.FAILED,
+                error="Import failed. An administrator can find details in the server logs.",
+            )
 
 
 @celery.task(name="reports.generate")
@@ -57,7 +61,12 @@ def generate_report_task(job_id: int) -> None:
             job = db.get(ReportJob, job_id)
             assert job is not None
             job.status = JobStatus.FAILED
-            job.error = str(exc)[:2000]
+            # RuntimeError carries a message meant for users; anything else stays in the logs
+            job.error = (
+                str(exc)[:2000]
+                if isinstance(exc, RuntimeError)
+                else "Report generation failed. An administrator can find details in the server logs."
+            )
         job.finished_at = datetime.now(UTC)
         db.commit()
 

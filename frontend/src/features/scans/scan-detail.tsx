@@ -13,6 +13,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { SeverityCounters, SeverityStrip } from "@/components/severity";
+import { NotFound } from "@/components/states";
 import { Dialog, DropdownMenu, MenuItem, MenuSeparator, Tooltip } from "@/components/ui/overlay";
 import {
   Badge,
@@ -38,7 +39,7 @@ export function ScanDetailPage({ id }: { id: number }) {
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const { data: scan } = useQuery({
+  const { data: scan, isError } = useQuery({
     queryKey: ["scans", "detail", id],
     queryFn: () => api.get<Scan>(`/scans/${id}`),
     refetchInterval: (q) =>
@@ -91,6 +92,7 @@ export function ScanDetailPage({ id }: { id: number }) {
     },
   });
 
+  if (isError) return <NotFound what="Scan" />;
   if (!scan) return <Skeleton className="h-64" />;
   const counts = scanCounts(scan);
   const credentialed = hosts?.filter((h) => h.credentialed).length ?? 0;

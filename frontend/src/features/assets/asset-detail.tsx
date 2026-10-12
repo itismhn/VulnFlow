@@ -4,6 +4,7 @@ import { ShieldCheck, ShieldOff, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { SeverityBadge, SeverityCounters, SeverityStrip, StatusBadge } from "@/components/severity";
+import { NotFound } from "@/components/states";
 import { Button, Card, CardHeader, Input, PageHeader, Select, Skeleton } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -14,7 +15,7 @@ import { CriticalityDots } from "./assets-page";
 export function AssetDetailPage({ id }: { id: number }) {
   const { can } = useAuth();
   const qc = useQueryClient();
-  const { data: asset } = useQuery({
+  const { data: asset, isError } = useQuery({
     queryKey: ["assets", "detail", id],
     queryFn: () => api.get<AssetRow>(`/assets/${id}`),
   });
@@ -37,6 +38,7 @@ export function AssetDetailPage({ id }: { id: number }) {
     },
   });
 
+  if (isError) return <NotFound what="Asset" />;
   if (!asset) return <Skeleton className="h-64" />;
   const editable = can("assets:update");
 
