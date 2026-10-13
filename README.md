@@ -1,4 +1,6 @@
-# Report Manager
+<p align="center"><img src="docs/brand/logo.svg" alt="VulnFlow" height="48"></p>
+
+# VulnFlow
 
 **Self-hosted vulnerability management for Nessus scan results.** Import `.nessus` exports, track every vulnerability from first detection to verified fix, slice exposure by IP range, zone, severity or asset, and produce branded reports, all inside your own network.
 
@@ -16,7 +18,7 @@ Nessus is great at finding vulnerabilities. It is less helpful with the work tha
 - *Can the branch IT team see only their own subnets?*
 - *Can I hand management a PDF in five minutes?*
 
-Report Manager turns a pile of scan exports into a managed, auditable vulnerability backlog.
+VulnFlow turns a pile of scan exports into a managed, auditable vulnerability backlog.
 
 ## Features
 
@@ -74,7 +76,7 @@ Report Manager turns a pile of scan exports into a managed, auditable vulnerabil
 
 ## Installation
 
-Report Manager runs as five services: PostgreSQL, Redis, the API, a background worker, and the web UI (nginx). Docker is the easiest way to run them all. You can also run them directly on a host.
+VulnFlow runs as five services: PostgreSQL, Redis, the API, a background worker, and the web UI (nginx). Docker is the easiest way to run them all. You can also run them directly on a host.
 
 ### Option A: Docker (recommended)
 

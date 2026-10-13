@@ -1,6 +1,6 @@
 # Roadmap
 
-This is the living plan for Report Manager. Items move from 💡 → 📋 → 🚧 → ✅ as they progress, and shipped items are recorded in [CHANGELOG.md](CHANGELOG.md).
+This is the living plan for VulnFlow. Items move from 💡 → 📋 → 🚧 → ✅ as they progress, and shipped items are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 **Legend:** ✅ done · 🚧 in progress · 📋 planned · 💡 idea (needs discussion)
 

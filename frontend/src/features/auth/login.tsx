@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { HeatmapMark } from "@/components/brand";
+import { LogoMark } from "@/components/brand";
 import { Button, Field, Input } from "@/components/ui/primitives";
 import { ApiError, api } from "@/lib/api";
 import type { Me } from "@/lib/types";
@@ -30,8 +30,8 @@ export function LoginPage() {
     <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
       <aside className="relative hidden overflow-hidden bg-[#0e1a2b] p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div className="flex items-center gap-2.5">
-          <HeatmapMark className="size-7" />
-          <span className="font-display text-lg font-semibold tracking-tight">Report Manager</span>
+          <LogoMark className="size-7" />
+          <span className="font-display text-lg font-semibold tracking-tight">VulnFlow</span>
         </div>
         <div className="max-w-md space-y-10">
           <div>
@@ -53,8 +53,8 @@ export function LoginPage() {
       <main className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-sm space-y-5">
           <div className="lg:hidden flex items-center gap-2">
-            <HeatmapMark className="size-6" />
-            <span className="font-display font-semibold">Report Manager</span>
+            <LogoMark className="size-6" />
+            <span className="font-display font-semibold">VulnFlow</span>
           </div>
           <div>
             <h2 className="font-display text-2xl font-semibold tracking-tight">Sign in</h2>

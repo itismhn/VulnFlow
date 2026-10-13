@@ -1,6 +1,6 @@
 # Security policy
 
-Report Manager stores sensitive vulnerability data, so we take reports seriously.
+VulnFlow stores sensitive vulnerability data, so we take reports seriously.
 
 ## Reporting a vulnerability
 

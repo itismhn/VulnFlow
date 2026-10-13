@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Report Manager.
+Thanks for helping improve VulnFlow.
 
 ## Ground rules
 

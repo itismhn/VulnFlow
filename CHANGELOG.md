@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+- The project is now called **VulnFlow**, with a new logo and favicon. Existing Docker deployments keep their data: the volumes, database name, and `RM_` settings are unchanged.
+
 ### Added
 - **Software inventory** (*Software* page): every operating system, application, package, and network service Nessus detected, with its version, grouped by product with a host count per version. Search by product, vendor, or CPE. Filter by category, network, IP range, and version expressions such as `19.3`, `2.4.*`, `<2.17.1`, or `>=2.0 <2.17.1` to find the hosts a CVE affects. Export the matching hosts to CSV or Excel.
 - Versions are read from the CPE plugin, SSH package lists (dpkg and rpm), Windows installed software, HTTP and SSH banners, the Oracle TNS listener, and the `Version :` blocks of detection plugins. The same install reported by several plugins is merged per host.

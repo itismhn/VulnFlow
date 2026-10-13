@@ -71,5 +71,5 @@ docker-demo:  ## Load demo data into the Docker stack
 
 docker-backup:  ## Dump the database to backups/ (uploaded files live in the storage volume)
 	@mkdir -p backups
-	$(COMPOSE) exec -T db pg_dump -U report_manager -Fc report_manager > backups/report_manager-$$(date +%Y%m%d-%H%M%S).dump
+	$(COMPOSE) exec -T db pg_dump -U report_manager -Fc report_manager > backups/vulnflow-$$(date +%Y%m%d-%H%M%S).dump
 	@ls -lh backups | tail -1

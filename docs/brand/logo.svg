@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 48" width="220" height="48">
+  <style>
+    .word { font: 600 28px "Inter", "Segoe UI", system-ui, -apple-system, sans-serif; letter-spacing: -0.5px; fill: #0E1A2B; }
+    .flow { fill: #0E7490; }
+    @media (prefers-color-scheme: dark) { .word { fill: #F1F5F9; } .flow { fill: #22A3C3; } }
+  </style>
+  <g transform="translate(0 2) scale(1.375)">
+    <rect width="32" height="32" rx="7" fill="#0E1A2B"/>
+    <path d="M7 9C16 9 16 23 25 23" fill="none" stroke="#334155" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="7" cy="9" r="3" fill="#DC2626"/>
+    <circle cx="13.7" cy="12.6" r="2.5" fill="#EA580C"/>
+    <circle cx="18.3" cy="19.4" r="2.5" fill="#CA8A04"/>
+    <circle cx="25" cy="23" r="3.2" fill="#22A3C3"/>
+  </g>
+  <text x="56" y="34" class="word">Vuln<tspan class="flow">Flow</tspan></text>
+</svg>

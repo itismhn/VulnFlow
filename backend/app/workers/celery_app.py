@@ -3,7 +3,7 @@ from celery.schedules import crontab
 
 from app.core.config import settings
 
-celery = Celery("report_manager", broker=settings.redis_url, backend=settings.redis_url)
+celery = Celery("vulnflow", broker=settings.redis_url, backend=settings.redis_url)
 celery.conf.update(
     task_always_eager=settings.task_always_eager,
     task_eager_propagates=False,

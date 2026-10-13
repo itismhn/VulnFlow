@@ -1,5 +1,5 @@
 [project]
-name = "report-manager-api"
+name = "vulnflow-api"
 version = "0.2.0"
 description = "Self-hosted vulnerability report management for Nessus scans"
 license = "Apache-2.0"

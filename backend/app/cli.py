@@ -12,7 +12,7 @@ from app.core.security import hash_password, password_problems
 from app.models import Network, User
 from app.models.enums import Role
 
-cli = typer.Typer(help="Report Manager administration", no_args_is_help=True)
+cli = typer.Typer(help="VulnFlow administration", no_args_is_help=True)
 
 
 def _random_password() -> str:

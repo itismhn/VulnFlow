@@ -23,7 +23,7 @@ import {
   Users,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { HeatmapMark } from "@/components/brand";
+import { LogoMark } from "@/components/brand";
 import { DropdownMenu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/overlay";
 import { Button, Kbd } from "@/components/ui/primitives";
 import { CommandPalette } from "@/features/layout/command-palette";
@@ -83,9 +83,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="flex h-full flex-col gap-5 overflow-y-auto px-3 py-4" aria-label="Main">
       <Link to="/" className="flex items-center gap-2.5 px-2" onClick={onNavigate}>
-        <HeatmapMark className="size-7" />
+        <LogoMark className="size-7" />
         <div className="leading-tight">
-          <div className="font-display text-[15px] font-semibold tracking-tight">Report Manager</div>
+          <div className="font-display text-[15px] font-semibold tracking-tight">VulnFlow</div>
           <div className="text-[11px] text-ink-3">Vulnerability management</div>
         </div>
       </Link>

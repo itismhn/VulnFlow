@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { HeatmapMark } from "@/components/brand";
+import { LogoMark } from "@/components/brand";
 import { Button, Card, Field, Input } from "@/components/ui/primitives";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -98,7 +98,7 @@ export function ChangePasswordPage({ forced }: { forced?: boolean }) {
   return (
     <div className="grid min-h-screen place-items-center p-6">
       <Card className="w-full max-w-md p-6">
-        <HeatmapMark className="mb-4 size-7" />
+        <LogoMark className="mb-4 size-7" />
         <h1 className="font-display text-xl font-semibold">Set a new password</h1>
         <p className="mt-1 mb-5 text-sm text-ink-2">
           {forced

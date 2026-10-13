@@ -4,11 +4,11 @@
 #   make docker-admin      # create the first admin account
 # Without make, always pass --env-file so ${POSTGRES_PASSWORD} resolves:
 #   docker compose -f deploy/docker-compose.yml --env-file .env <command>
-name: report-manager
+name: vulnflow
 
 x-backend: &backend
   build: ../backend
-  image: report-manager-api:latest
+  image: vulnflow-api:latest
   env_file: ../.env
   # Derived from POSTGRES_PASSWORD so the two can never drift apart
   environment:
@@ -75,7 +75,7 @@ services:
 
   web:
     build: ../frontend
-    image: report-manager-web:latest
+    image: vulnflow-web:latest
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-8080}:8080"
@@ -87,7 +87,12 @@ services:
       interval: 15s
       retries: 5
 
+# Pinned to the names created before the rename to VulnFlow, so existing data stays attached.
+# The database user and name stay report_manager for the same reason.
 volumes:
   pgdata:
+    name: report-manager_pgdata
   redisdata:
+    name: report-manager_redisdata
   storage:
+    name: report-manager_storage
