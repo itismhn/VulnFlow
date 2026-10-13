@@ -36,6 +36,8 @@ class ParsedPlugin:
     publication_date: date | None = None
     patch_publication_date: date | None = None
     vuln_publication_date: date | None = None
+    # Product the plugin detects, e.g. cpe:/a:apache:http_server (no version)
+    cpe: str = ""
 
 
 @dataclass(slots=True)

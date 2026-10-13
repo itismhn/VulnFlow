@@ -2,7 +2,17 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { Boxes, Bug, FileText, LayoutDashboard, ListChecks, Network, ScanLine, Upload } from "lucide-react";
+import {
+  Boxes,
+  Bug,
+  FileText,
+  LayoutDashboard,
+  ListChecks,
+  Network,
+  PackageSearch,
+  ScanLine,
+  Upload,
+} from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -107,6 +117,7 @@ export function CommandPalette({
                   {jump("/findings", "Findings", <ListChecks />)}
                   {jump("/vulnerabilities", "Vulnerabilities", <Bug />)}
                   {jump("/assets", "Assets", <Boxes />)}
+                  {jump("/software", "Software inventory", <PackageSearch />)}
                   {jump("/networks", "Networks", <Network />)}
                   {jump("/scans", "Scan history", <ScanLine />)}
                   {jump("/reports", "Reports", <FileText />)}

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { SeverityBadge, SeverityCounters, SeverityStrip, StatusBadge } from "@/components/severity";
 import { NotFound } from "@/components/states";
 import { Button, Card, CardHeader, Input, PageHeader, Select, Skeleton } from "@/components/ui/primitives";
+import { AssetSoftware } from "@/features/software/asset-software";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { AssetRow, AssetScan, Finding, Page } from "@/lib/types";
@@ -231,6 +232,8 @@ export function AssetDetailPage({ id }: { id: number }) {
           </ol>
         </Card>
       </div>
+
+      <AssetSoftware assetId={id} />
     </div>
   );
 }

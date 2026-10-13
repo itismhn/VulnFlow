@@ -62,6 +62,7 @@ class Plugin(Base):
     publication_date: Mapped[date | None] = mapped_column(Date)
     patch_publication_date: Mapped[date | None] = mapped_column(Date)
     vuln_publication_date: Mapped[date | None] = mapped_column(Date)
+    cpe: Mapped[str] = mapped_column(String(512), default="")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

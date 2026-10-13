@@ -52,7 +52,8 @@ services:
   migrate:
     <<: *backend
     restart: "no"
-    command: ["alembic", "upgrade", "head"]
+    # The second step fills the software inventory once, for scans imported before it existed
+    command: ["sh", "-c", "alembic upgrade head && python -m app.cli rebuild-software --if-empty"]
 
   api:
     <<: *backend

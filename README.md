@@ -40,6 +40,7 @@ Report Manager turns a pile of scan exports into a managed, auditable vulnerabil
 - Bulk assign, status change, due dates, and comments. Every change lands on the finding's timeline.
 - Asset inventory with a risk score (severity-weighted, scaled by business criticality), scan timeline, and tags.
 - Vulnerability view: where a given CVE or plugin exists across the estate.
+- **Software inventory**: every OS, application, package, and service version Nessus found, grouped by product. Search for a product and a version range (for example `log4j` and `<2.17.1`) to list the hosts a new CVE affects, then export them.
 - `⌘K` search across IPs, hostnames, CVEs, plugin IDs, and scans.
 
 **Remediation workflow**
@@ -154,7 +155,8 @@ The UI runs at <http://localhost:5173> and the API docs at <http://localhost:800
 
 1. **Add networks** (*Networks*): name your IP ranges and zones, set criticality and owner, or import them from CSV. Assets are matched to the most specific range.
 2. **Import scans** (**Import scan** in the top bar): in Nessus, export a scan as **.nessus**, then drag one or more files in. Parsing runs in the background. *Scan history* shows progress and, per scan, the new, fixed, and persisting findings.
-3. **Work the findings** (*Findings*, *Vulnerabilities*, *Assets*): filter by severity, network, status, or CVE. Assign owners, set due dates, comment, accept risks, or mark false positives. Assignees see their queue under *My work*; risk acceptances wait in *Risk approvals*.
+3. **Work the findings** (*Findings*, *Vulnerabilities*, *Assets*, *Software*): filter by severity, network, status, or CVE. Assign owners, set due dates, comment, accept risks, or mark false positives. Assignees see their queue under *My work*; risk acceptances wait in *Risk approvals*.
+   To check a new CVE against your estate, open *Software*, search for the product, and enter the affected range in the version box, e.g. `<2.17.1` or `>=19.3 <19.21`. *By host* lists every matching host with the port or path where the software was found. Credentialed scans give the most complete inventory, because uncredentialed scans only see what network services announce.
 4. **Report** (*Reports*): pick a template, scope, and format (PDF, XLSX, CSV, HTML).
 5. **Administer** (*Users*, *Settings*, *Audit log*): create users with the Admin, Analyst, or Viewer role and restrict them to networks, set SLA policies and branding, and review the audit log.
 
@@ -175,6 +177,7 @@ Run these inside `backend/` with `.venv/bin/python -m app.cli …`, or in Docker
 | `create-admin [--username admin] [--email …] [--password …]` | Create an admin. A random temporary password is printed if you omit one |
 | `seed-demo [--months 4] [--hosts-per-network 12]` | Load demo networks and synthetic scans into the database |
 | `demo-files [--out demo-data]` | Write synthetic `.nessus` files to try the upload flow |
+| `rebuild-software [--if-empty]` | Rebuild the software inventory from findings already in the database |
 | `--help` | Show all commands and options |
 
 ### Configuration

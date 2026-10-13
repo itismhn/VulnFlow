@@ -34,7 +34,7 @@ from app.models import (
     ScanHost,
 )
 from app.models.enums import ACTIVE_STATUSES, FindingEventKind, FindingStatus, ScanStatus
-from app.services import networks, risk, sla, suppression
+from app.services import networks, risk, sla, software, suppression
 from app.services.parsers import ParsedHost, get_parser
 from app.services.parsers.base import ParsedItem
 
@@ -61,9 +61,14 @@ class IngestStats:
         self.last_time = max(filter(None, (self.last_time, end or start)))
 
 
+def lock_ingest(db: Session) -> None:
+    """Serialize with every other import until the current transaction ends."""
+    db.execute(select(func.pg_advisory_xact_lock(_INGEST_LOCK_KEY)))
+
+
 def ingest_scan(db: Session, scan: Scan, progress: Callable[[int], None] | None = None) -> IngestStats:
     """Parse `scan.file_path` and merge it into findings. Caller commits."""
-    db.execute(select(func.pg_advisory_xact_lock(_INGEST_LOCK_KEY)))
+    lock_ingest(db)
 
     path = Path(scan.file_path)
     parser = get_parser(path)
@@ -91,6 +96,7 @@ def ingest_scan(db: Session, scan: Scan, progress: Callable[[int], None] | None 
     suppression.apply_all(db, stats.asset_ids)
     risk.expire_due(db)
     sla.apply_sla(db, stats.asset_ids)
+    software.rebuild(db, stats.asset_ids)
     _finalize_scan(db, scan, parser.meta, stats)
     return stats
 
@@ -470,3 +476,4 @@ def recompute_after_scan_delete(db: Session, asset_ids: list[int]) -> None:
         ),
         {"ids": asset_ids},
     )
+    software.rebuild(db, asset_ids)

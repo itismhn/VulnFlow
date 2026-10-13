@@ -19,6 +19,7 @@ import { Route as AppMetricsRouteImport } from './routes/_app/metrics'
 import { Route as AppMyWorkRouteImport } from './routes/_app/my-work'
 import { Route as AppNetworksRouteImport } from './routes/_app/networks'
 import { Route as AppReportsRouteImport } from './routes/_app/reports'
+import { Route as AppSoftwareRouteImport } from './routes/_app/software'
 import { Route as AppAdminAuditRouteImport } from './routes/_app/admin/audit'
 import { Route as AppAdminSettingsRouteImport } from './routes/_app/admin/settings'
 import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
@@ -77,6 +78,11 @@ const AppNetworksRoute = AppNetworksRouteImport.update({
 const AppReportsRoute = AppReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSoftwareRoute = AppSoftwareRouteImport.update({
+  id: '/software',
+  path: '/software',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
@@ -141,6 +147,7 @@ export interface FileRoutesByFullPath {
   '/my-work': typeof AppMyWorkRoute
   '/networks': typeof AppNetworksRoute
   '/reports': typeof AppReportsRoute
+  '/software': typeof AppSoftwareRoute
   '/admin/audit': typeof AppAdminAuditRoute
   '/admin/settings': typeof AppAdminSettingsRoute
   '/admin/users': typeof AppAdminUsersRoute
@@ -161,6 +168,7 @@ export interface FileRoutesByTo {
   '/my-work': typeof AppMyWorkRoute
   '/networks': typeof AppNetworksRoute
   '/reports': typeof AppReportsRoute
+  '/software': typeof AppSoftwareRoute
   '/': typeof AppIndexRoute
   '/admin/audit': typeof AppAdminAuditRoute
   '/admin/settings': typeof AppAdminSettingsRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/_app/my-work': typeof AppMyWorkRoute
   '/_app/networks': typeof AppNetworksRoute
   '/_app/reports': typeof AppReportsRoute
+  '/_app/software': typeof AppSoftwareRoute
   '/_app/': typeof AppIndexRoute
   '/_app/admin/audit': typeof AppAdminAuditRoute
   '/_app/admin/settings': typeof AppAdminSettingsRoute
@@ -208,6 +217,7 @@ export interface FileRouteTypes {
     | '/my-work'
     | '/networks'
     | '/reports'
+    | '/software'
     | '/admin/audit'
     | '/admin/settings'
     | '/admin/users'
@@ -228,6 +238,7 @@ export interface FileRouteTypes {
     | '/my-work'
     | '/networks'
     | '/reports'
+    | '/software'
     | '/'
     | '/admin/audit'
     | '/admin/settings'
@@ -250,6 +261,7 @@ export interface FileRouteTypes {
     | '/_app/my-work'
     | '/_app/networks'
     | '/_app/reports'
+    | '/_app/software'
     | '/_app/'
     | '/_app/admin/audit'
     | '/_app/admin/settings'
@@ -340,6 +352,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppReportsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/software': {
+      id: '/_app/software'
+      path: '/software'
+      fullPath: '/software'
+      preLoaderRoute: typeof AppSoftwareRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/admin/audit': {
       id: '/_app/admin/audit'
       path: '/admin/audit'
@@ -421,6 +440,7 @@ interface AppRouteChildren {
   AppMyWorkRoute: typeof AppMyWorkRoute
   AppNetworksRoute: typeof AppNetworksRoute
   AppReportsRoute: typeof AppReportsRoute
+  AppSoftwareRoute: typeof AppSoftwareRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAdminAuditRoute: typeof AppAdminAuditRoute
   AppAdminSettingsRoute: typeof AppAdminSettingsRoute
@@ -442,6 +462,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppMyWorkRoute: AppMyWorkRoute,
   AppNetworksRoute: AppNetworksRoute,
   AppReportsRoute: AppReportsRoute,
+  AppSoftwareRoute: AppSoftwareRoute,
   AppIndexRoute: AppIndexRoute,
   AppAdminAuditRoute: AppAdminAuditRoute,
   AppAdminSettingsRoute: AppAdminSettingsRoute,

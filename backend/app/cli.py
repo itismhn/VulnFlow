@@ -113,6 +113,25 @@ def seed_demo(months: int = typer.Option(4), hosts_per_network: int = typer.Opti
                 typer.echo(f"Imported {path.name}: {stats.hosts} hosts, {stats.new} new, {stats.fixed} fixed")
 
 
+@cli.command("rebuild-software")
+def rebuild_software(
+    if_empty: bool = typer.Option(False, help="Only when the inventory has no entries yet"),
+) -> None:
+    """Rebuild the software inventory from findings already in the database."""
+    from app.models import AssetSoftware
+    from app.services.ingest import lock_ingest
+    from app.services.software import rebuild
+
+    with SessionLocal() as db:
+        if if_empty and db.scalar(select(AssetSoftware.id).limit(1)):
+            typer.echo("Software inventory already built.")
+            return
+        lock_ingest(db)
+        count = rebuild(db)
+        db.commit()
+    typer.secho(f"Software inventory rebuilt: {count} entries.", fg="green")
+
+
 def main() -> None:
     cli()
 

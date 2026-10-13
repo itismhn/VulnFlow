@@ -60,3 +60,32 @@ export function filtersOf(s: FindingsSearch): FindingFilters {
 export function hasFilters(f: FindingFilters): boolean {
   return Object.values(f).some((v) => v !== undefined && !(Array.isArray(v) && v.length === 0));
 }
+
+/** URL search params for the software inventory. */
+export interface SoftwareSearch {
+  q?: string;
+  category?: string;
+  vendor?: string;
+  product?: string;
+  version?: string;
+  network_id?: number;
+  ip?: string;
+  view?: "products" | "hosts";
+  sort?: string;
+  page?: number;
+}
+
+export function parseSoftwareSearch(s: Record<string, unknown>): SoftwareSearch {
+  return {
+    q: str(s.q),
+    category: str(s.category),
+    vendor: s.vendor == null ? undefined : String(s.vendor),
+    product: str(s.product),
+    version: str(s.version),
+    network_id: num(s.network_id),
+    ip: str(s.ip),
+    view: s.view === "hosts" ? "hosts" : undefined,
+    sort: str(s.sort),
+    page: num(s.page),
+  };
+}

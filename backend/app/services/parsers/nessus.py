@@ -207,6 +207,7 @@ class NessusParser:
             publication_date=_date(one("plugin_publication_date")),
             patch_publication_date=_date(one("patch_publication_date")),
             vuln_publication_date=_date(one("vuln_publication_date")),
+            cpe=one("cpe").split()[0][:512] if one("cpe") else "",
         )
         try:
             port = int(item.get("port", "0") or 0)

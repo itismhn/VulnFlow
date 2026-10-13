@@ -4,7 +4,7 @@ Never commit real scan exports: they reveal internal IPs, hostnames, and weaknes
 """
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -264,7 +264,6 @@ CATALOG: list[DemoVuln] = [
     DemoVuln(10863, "SSL Certificate Information", "General", 0, 443, "www"),
     DemoVuln(22964, "Service Detection", "Service detection", 0, 443, "www"),
     DemoVuln(11219, "Nessus SYN scanner", "Port scanners", 0, 443, "www"),
-    DemoVuln(45590, "Common Platform Enumeration (CPE)", "General", 0, 0, "general"),
 ]
 
 NETWORKS = [
@@ -298,6 +297,162 @@ class DemoHost:
     os_kind: str
     os: str
     vulns: list[DemoVuln]
+    # Software component -> index into its VERSIONS list ("newer" is a higher index)
+    stack: dict[str, int] = field(default_factory=dict)
+
+
+# Fictional but realistic version histories, oldest first
+VERSIONS: dict[str, list[str]] = {
+    "openssl": ["1.1.1f", "1.1.1k", "1.1.1w", "3.0.2", "3.0.13"],
+    "openssh": ["7.4p1", "8.2p1", "8.9p1", "9.6p1", "9.8p1"],
+    "apache": ["2.4.41", "2.4.52", "2.4.57", "2.4.62"],
+    "iis": ["8.5", "10.0"],
+    "oracle_db": ["12.2.0.1.0", "19.3.0.0.0", "19.18.0.0.0", "19.23.0.0.0"],
+    "log4j": ["2.14.1", "2.16.0", "2.17.1", "2.23.1"],
+    "java": ["1.8.0_281", "1.8.0_351", "11.0.20", "17.0.10"],
+    "chrome": ["118.0.5993.88", "124.0.6367.91", "131.0.6778.86"],
+    "sqlserver": ["13.0.5026.0", "15.0.2000.5", "16.0.1000.6"],
+    "dotnet": ["4.7.2", "4.8", "4.8.1"],
+    "sevenzip": ["16.04", "19.00", "23.01"],
+}
+
+_SOFTWARE_PLUGINS = {
+    # plugin id: (name, family, port, svc, cpe)
+    45590: ("Common Platform Enumeration (CPE)", "General", 0, "general", ""),
+    22869: ("Software Enumeration (SSH)", "General", 0, "general", ""),
+    20811: (
+        "Microsoft Windows Installed Software Enumeration (credentialed check)",
+        "Windows",
+        0,
+        "general",
+        "",
+    ),
+    10107: ("HTTP Server Type and Version", "Web Servers", 80, "www", ""),
+    10267: ("SSH Server Type and Version Information", "Service detection", 22, "ssh", ""),
+    10658: (
+        "Oracle Database tnslsnr Service Remote Version Disclosure",
+        "Databases",
+        1521,
+        "oracle_tnslsnr",
+        "",
+    ),
+    72063: ("Oracle Database Installed (Linux)", "Databases", 0, "general", "cpe:/a:oracle:database_server"),
+    156000: ("Apache Log4j Installed (Linux / Unix)", "Misc.", 0, "general", "cpe:/a:apache:log4j"),
+}
+
+
+def _pick_stack(rng: random.Random, kind: str) -> dict[str, int]:
+    def early(name: str) -> int:
+        # Older versions are more common in the first scan
+        return rng.randint(0, max(0, len(VERSIONS[name]) - 2))
+
+    if kind == "linux":
+        stack = {"openssl": early("openssl"), "openssh": early("openssh"), "java": early("java")}
+        if rng.random() < 0.5:
+            stack["apache"] = early("apache")
+        if rng.random() < 0.4:
+            stack["oracle_db"] = early("oracle_db")
+        if rng.random() < 0.35:
+            stack["log4j"] = early("log4j")
+        return stack
+    stack = {"dotnet": early("dotnet"), "chrome": early("chrome"), "sevenzip": early("sevenzip")}
+    if rng.random() < 0.5:
+        stack["iis"] = early("iis")
+    if rng.random() < 0.4:
+        stack["sqlserver"] = early("sqlserver")
+    if rng.random() < 0.3:
+        stack["oracle_db"] = early("oracle_db")
+    return stack
+
+
+def _upgrade(rng: random.Random, stack: dict[str, int]) -> dict[str, int]:
+    return {
+        name: min(idx + 1, len(VERSIONS[name]) - 1) if rng.random() < 0.25 else idx
+        for name, idx in stack.items()
+    }
+
+
+def software_items(h: DemoHost) -> list[tuple[int, str]]:
+    """(plugin id, plugin output) for the software detections of one host."""
+    if not h.stack:
+        return []
+    v = {name: VERSIONS[name][idx] for name, idx in h.stack.items()}
+    items: list[tuple[int, str]] = []
+    cpes = []
+    debian = "Ubuntu" in h.os
+    if h.os_kind == "linux":
+        packages = [("bash", "5.1-6ubuntu1" if debian else "4.4.20-4.el8")]
+        packages.append(("openssl", f"{v['openssl']}-1ubuntu2" if debian else f"{v['openssl']}-1.el8"))
+        packages.append(
+            ("openssh-server", f"1:{v['openssh']}-4ubuntu0.5" if debian else f"{v['openssh']}-1.el8")
+        )
+        packages.append(("sudo", "1.9.9-1ubuntu2" if debian else "1.8.29-8.el8"))
+        if "java" in v:
+            packages.append(("java-openjdk", f"{v['java']}-1" if debian else f"{v['java']}-2.el8"))
+        if debian:
+            lines = [f"  ii  {name:<24} {ver:<28} amd64        demo package" for name, ver in packages]
+        else:
+            lines = [f"  {name}-{ver}.x86_64|(none)" for name, ver in packages]
+        family = "Debian" if debian else "Red Hat"
+        items.append(
+            (
+                22869,
+                f"Here is the list of packages installed on the remote {family} Linux system :\n\n"
+                + "\n".join(lines),
+            )
+        )
+        items.append(
+            (10267, f"SSH version : SSH-2.0-OpenSSH_{v['openssh']}\nSSH supported authentication : publickey")
+        )
+        cpes.append(f"cpe:/a:openbsd:openssh:{v['openssh'].replace('p', ':p')} -> OpenBSD OpenSSH")
+        cpes.append(f"cpe:/a:openssl:openssl:{v['openssl']} -> OpenSSL Project OpenSSL {v['openssl']}")
+        if "apache" in v:
+            items.append((10107, f"The remote web server type is :\n\nApache/{v['apache']} (Unix)"))
+            cpes.append(
+                f"cpe:/a:apache:http_server:{v['apache']} -> Apache Software Foundation Apache HTTP Server"
+            )
+        if "log4j" in v:
+            paths = [f"  Path    : /opt/app/lib/log4j-core-{v['log4j']}.jar\n  Version : {v['log4j']}"]
+            if h.stack["log4j"] < 2:
+                paths.append("  Path    : /opt/reporting/lib/log4j-core-2.17.1.jar\n  Version : 2.17.1")
+            items.append((156000, "\n\n".join(paths)))
+    else:
+        software = [
+            ("Microsoft .NET Framework", v["dotnet"]),
+            ("Google Chrome", v["chrome"]),
+            (f"7-Zip {v['sevenzip']} (x64)", v["sevenzip"]),
+        ]
+        if "sqlserver" in v:
+            software.append(("Microsoft SQL Server", v["sqlserver"]))
+        if "oracle_db" in v:
+            software.append(("Oracle Database 19c", v["oracle_db"]))
+        lines = [f"  {name}  [version {ver}]  [installed on 2024/03/01]" for name, ver in software]
+        items.append(
+            (20811, "The following software are installed on the remote host :\n\n" + "\n".join(lines))
+        )
+        if "iis" in v:
+            items.append((10107, f"The remote web server type is :\n\nMicrosoft-IIS/{v['iis']}"))
+            cpes.append(f"cpe:/a:microsoft:internet_information_services:{v['iis']} -> Microsoft IIS")
+    if "oracle_db" in v:
+        items.append(
+            (
+                10658,
+                f"A 'version' request returns the following : \n\nTNSLSNR for Linux: Version {v['oracle_db']} - Production",
+            )
+        )
+        if h.os_kind == "linux":
+            items.append(
+                (72063, f"  Path    : /u01/app/oracle/product/19.0.0/dbhome_1\n  Version : {v['oracle_db']}")
+            )
+        cpes.append(f"x-cpe:/a:oracle:database_server:{v['oracle_db']}")
+    items.append(
+        (
+            45590,
+            "Following application CPE's matched on the remote system :\n\n"
+            + "\n".join(f"  {c}" for c in cpes),
+        )
+    )
+    return items
 
 
 def build_hosts(seed: int = 7, per_network: int = 12) -> list[DemoHost]:
@@ -320,6 +475,8 @@ def build_hosts(seed: int = 7, per_network: int = 12) -> list[DemoHost]:
                     os_kind=kind,
                     os=rng.choice(_OS[kind]),
                     vulns=infos + rng.sample(risky, k),
+                    # Own RNG so adding software never changes which vulns a host gets
+                    stack=_pick_stack(random.Random(f"{seed}-{base}.{10 + i * 3}"), kind),
                 )
             )
     return hosts
@@ -336,7 +493,11 @@ def evolve(
         pool = [v for v in CATALOG if v.os in (h.os_kind, "any") and v not in kept and v.severity > 0]
         if pool and rng.random() < new_ratio * 3:
             kept.append(rng.choice(pool))
-        out.append(DemoHost(h.ip, h.hostname, h.os_kind, h.os, kept))
+        out.append(
+            DemoHost(
+                h.ip, h.hostname, h.os_kind, h.os, kept, _upgrade(random.Random(f"{seed}-{h.ip}"), h.stack)
+            )
+        )
     return out
 
 
@@ -402,6 +563,29 @@ def write_nessus(
                 fields.append(("exploit_framework_metasploit", "true"))
             for tag, text in fields:
                 etree.SubElement(item, tag).text = text
+        for plugin_id, output in software_items(h):
+            name, family, port, svc, cpe = _SOFTWARE_PLUGINS[plugin_id]
+            item = etree.SubElement(
+                rh,
+                "ReportItem",
+                port=str(port),
+                svc_name=svc,
+                protocol="tcp",
+                severity="0",
+                pluginID=str(plugin_id),
+                pluginName=name,
+                pluginFamily=family,
+            )
+            for tag, text in (
+                ("risk_factor", "None"),
+                ("synopsis", f"Synthetic demo detection: {name}."),
+                ("description", "This is fictional demo data."),
+                ("solution", "n/a"),
+                ("cpe", cpe),
+                ("plugin_output", output),
+            ):
+                if text:
+                    etree.SubElement(item, tag).text = text
 
     path.parent.mkdir(parents=True, exist_ok=True)
     etree.ElementTree(root).write(str(path), xml_declaration=True, encoding="UTF-8", pretty_print=True)

@@ -51,6 +51,9 @@ Have a suggestion? [Open a feature request](https://github.com/itismhn/report-ma
 
 ## Phase 3: v0.3 Reporting & intelligence 📋
 
+- ✅ **Software inventory**: OS, application, package, and service versions per asset, with version-range search and export
+- 📋 Match the software inventory against CVE feeds (NVD CPE ranges) to flag affected hosts automatically
+
 - 📋 **Scheduled reports**: weekly or monthly generation, stored on the server, optional SMTP email
 - 📋 DOCX output for editable reports
 - 📋 Report sections: delta since last report, remediation plan grouped by owner team, methodology/appendix

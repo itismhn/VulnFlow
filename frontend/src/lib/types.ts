@@ -471,3 +471,45 @@ export interface Metrics {
   mttr_by_owner: MttrRow[];
   velocity: { week: string; opened: number; fixed: number }[];
 }
+
+export type SoftwareCategory = "os" | "application" | "package" | "service" | "hardware";
+
+export interface SoftwareGroup {
+  category: SoftwareCategory;
+  vendor: string;
+  product: string;
+  name: string;
+  cpe: string;
+  hosts: number;
+  version_count: number;
+  versions: { version: string; hosts: number }[];
+}
+
+export interface SoftwareInstance {
+  id: number;
+  asset_id: number;
+  ip: string;
+  hostname: string;
+  network_name: string | null;
+  zone: string | null;
+  category: SoftwareCategory;
+  name: string;
+  vendor: string;
+  product: string;
+  version: string;
+  cpe: string;
+  port: number;
+  protocol: string;
+  path: string;
+  plugin_id: number | null;
+  finding_id: number | null;
+  first_seen: string | null;
+  last_seen: string | null;
+}
+
+export interface SoftwareStats {
+  products: number;
+  instances: number;
+  hosts: number;
+  by_category: Partial<Record<SoftwareCategory, number>>;
+}

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services.demo import build_hosts, write_nessus
+from app.services.demo import build_hosts, software_items, write_nessus
 from app.services.parsers import ParseError, get_parser
 from app.services.parsers.nessus import NessusParser
 
@@ -110,4 +110,4 @@ def test_demo_generator_roundtrip(tmp_path: Path) -> None:
     path = write_nessus(tmp_path / "demo.nessus", hosts, datetime(2026, 1, 1, tzinfo=UTC))
     parsed = list(NessusParser().iter_hosts(path))
     assert len(parsed) == len(hosts)
-    assert sum(len(h.items) for h in parsed) == sum(len(h.vulns) for h in hosts)
+    assert sum(len(h.items) for h in parsed) == sum(len(h.vulns) + len(software_items(h)) for h in hosts)

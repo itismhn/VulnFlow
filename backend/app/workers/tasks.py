@@ -92,3 +92,16 @@ def daily_maintenance_task() -> dict[str, int]:
         db.commit()
     log.info("Daily maintenance: %s", result)
     return result
+
+
+@celery.task(name="software.rebuild")
+def rebuild_software_task() -> int:
+    from app.services.ingest import lock_ingest
+    from app.services.software import rebuild
+
+    with SessionLocal() as db:
+        lock_ingest(db)
+        count = rebuild(db)
+        db.commit()
+    log.info("Software inventory rebuilt: %s entries", count)
+    return count
