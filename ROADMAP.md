@@ -4,7 +4,7 @@ This is the living plan for VulnFlow. Items move from 💡 → 📋 → 🚧 →
 
 **Legend:** ✅ done · 🚧 in progress · 📋 planned · 💡 idea (needs discussion)
 
-Have a suggestion? [Open a feature request](https://github.com/itismhn/report-management/issues/new?template=feature_request.yml). Describe the problem in your vulnerability-management workflow, not only the solution.
+Have a suggestion? [Open a feature request](https://github.com/itismhn/VulnFlow/issues/new?template=feature_request.yml). Describe the problem in your vulnerability-management workflow, not only the solution.
 
 ---
 

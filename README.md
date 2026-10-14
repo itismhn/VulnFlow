@@ -83,8 +83,8 @@ VulnFlow runs as five services: PostgreSQL, Redis, the API, a background worker,
 Requirements: Docker with Compose v2, `make`, and `openssl`.
 
 ```bash
-git clone https://github.com/itismhn/report-management.git
-cd report-management
+git clone https://github.com/itismhn/VulnFlow.git
+cd VulnFlow
 make docker-env     # writes .env with random RM_SECRET_KEY and POSTGRES_PASSWORD
 make docker-up      # builds images, runs migrations, starts everything
 make docker-admin   # creates the first admin and prints a temporary password

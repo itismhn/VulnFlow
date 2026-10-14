@@ -4,7 +4,7 @@ VulnFlow stores sensitive vulnerability data, so we take reports seriously.
 
 ## Reporting a vulnerability
 
-Please **do not open a public issue.** Report privately through [GitHub Security Advisories](https://github.com/itismhn/report-management/security/advisories/new).
+Please **do not open a public issue.** Report privately through [GitHub Security Advisories](https://github.com/itismhn/VulnFlow/security/advisories/new).
 
 Include:
 - the affected version or commit
