@@ -1,0 +1,3 @@
+# Keep LF line endings on checkout, including on Windows (core.autocrlf=true),
+# so files copied into the Linux images and the Makefile work unchanged
+* text=auto eol=lf

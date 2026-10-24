@@ -17,8 +17,8 @@ dev-db:  ## Create local Postgres databases for development and tests
 	createdb rm_dev || true
 	createdb rm_test || true
 
-migrate:  ## Apply database migrations
-	cd $(BACKEND) && .venv/bin/alembic upgrade head
+migrate:  ## Apply database migrations and create the default admin on a fresh install
+	cd $(BACKEND) && .venv/bin/alembic upgrade head && .venv/bin/python -m app.cli ensure-admin
 
 api:  ## Run the API with auto-reload on :8000
 	cd $(BACKEND) && .venv/bin/uvicorn app.main:app --reload --port 8000

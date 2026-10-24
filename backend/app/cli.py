@@ -14,6 +14,10 @@ from app.models.enums import Role
 
 cli = typer.Typer(help="VulnFlow administration", no_args_is_help=True)
 
+# Created on a fresh install so there is always a way in; must be changed at first login
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "admin123"  # noqa: S105 (documented default, forced change)
+
 
 def _random_password() -> str:
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*-_"
@@ -54,6 +58,31 @@ def create_admin(
     if not password:
         typer.echo(f"Temporary password: {pw}")
     typer.echo("You will be asked to change it at first login.")
+
+
+@cli.command("ensure-admin")
+def ensure_admin() -> None:
+    """Create the default admin (admin / admin123) if there are no users yet."""
+    with SessionLocal() as db:
+        if db.scalar(select(User.id).limit(1)):
+            typer.echo("Users already exist, default admin not created.")
+            return
+        # The default password is below the policy on purpose; the forced change enforces it
+        db.add(
+            User(
+                username=DEFAULT_ADMIN_USERNAME,
+                email="admin@example.com",
+                full_name="Administrator",
+                role=Role.ADMIN,
+                password_hash=hash_password(DEFAULT_ADMIN_PASSWORD),
+                must_change_password=True,
+            )
+        )
+        db.commit()
+    typer.secho(
+        f"Default admin created: {DEFAULT_ADMIN_USERNAME} / {DEFAULT_ADMIN_PASSWORD} (change it at first login)",
+        fg="yellow",
+    )
 
 
 @cli.command("demo-files")

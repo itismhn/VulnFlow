@@ -80,17 +80,28 @@ VulnFlow runs as five services: PostgreSQL, Redis, the API, a background worker,
 
 ### Option A: Docker (recommended)
 
-Requirements: Docker with Compose v2, `make`, and `openssl`.
+Requirements: Docker with Compose v2, `make`, and `openssl`. On Windows, see [Docker on Windows](#docker-on-windows).
 
 ```bash
 git clone https://github.com/itismhn/VulnFlow.git
 cd VulnFlow
 make docker-env     # writes .env with random RM_SECRET_KEY and POSTGRES_PASSWORD
-make docker-up      # builds images, runs migrations, starts everything
-make docker-admin   # creates the first admin and prints a temporary password
+make docker-up      # builds images, runs migrations, creates the default admin, starts everything
 ```
 
-Open <http://localhost:8080> and sign in as `admin`. You will be asked to change the password.
+Open <http://localhost:8080> and sign in with the [default admin](#default-admin-account) (`admin` / `admin123`). You will be asked to change the password.
+
+### Default admin account
+
+On a fresh install (no users in the database), migrations create one admin account:
+
+| Username | Password |
+|---|---|
+| `admin` | `admin123` |
+
+The password must be changed at first sign-in, and the new one has to meet the password policy. The account is created only when there are no users at all, so it never comes back once you have set up your own. To create another admin with a random password instead, run `create-admin` (see [Admin CLI](#admin-cli)).
+
+**Change this password before exposing VulnFlow to anyone else.** Everyone who has read this README knows the default.
 
 `make docker-env` sets `RM_COOKIE_SECURE=false` so sign-in works over plain `http://`. Once TLS is in front of the app, set it to `true` in `.env` and run `make docker-up` again.
 
@@ -110,10 +121,53 @@ Without `make`, use Compose directly. Always pass `--env-file .env`, or Compose 
 
 ```bash
 docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
-docker compose -f deploy/docker-compose.yml --env-file .env exec api python -m app.cli create-admin
 ```
 
 Data lives in the named volumes `pgdata` (database), `storage` (uploaded scans and generated reports), and `redisdata`. `docker compose down -v` **deletes them**.
+
+#### Docker on Windows
+
+Requirements: [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/) with the WSL 2 backend and Linux containers (the default), and Git. You don't need `make` or `openssl`. Run these in PowerShell:
+
+```powershell
+git clone https://github.com/itismhn/VulnFlow.git
+cd VulnFlow
+
+# Same as `make docker-env`: write .env with random secrets, cookies over plain http
+function New-Hex($bytes) { $b = [byte[]]::new($bytes); [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString('x2') }) }
+(Get-Content .env.example) `
+  -replace '^RM_SECRET_KEY=.*', "RM_SECRET_KEY=$(New-Hex 48)" `
+  -replace '^POSTGRES_PASSWORD=.*', "POSTGRES_PASSWORD=$(New-Hex 24)" `
+  -replace '^RM_COOKIE_SECURE=.*', 'RM_COOKIE_SECURE=false' |
+  Set-Content .env -Encoding ascii
+
+# Shortcut for the long compose command (lasts for this PowerShell window)
+function vf { docker compose -f deploy/docker-compose.yml --env-file .env @args }
+
+vf up -d --build
+```
+
+Open <http://localhost:8080> and sign in with the [default admin](#default-admin-account). The `make` targets map to `vf` like this:
+
+| Make target | PowerShell |
+|---|---|
+| `make docker-up` | `vf up -d --build` |
+| `make docker-down` | `vf down` |
+| `make docker-ps` | `vf ps` |
+| `make docker-logs` | `vf logs -f --tail=100` |
+| `make docker-admin` | `vf exec api python -m app.cli create-admin` |
+| `make docker-demo` | `vf exec api python -m app.cli seed-demo` |
+
+To back up the database, let `pg_dump` write the file inside the container and copy it out. Redirecting with `>` in PowerShell can corrupt the binary dump:
+
+```powershell
+New-Item -ItemType Directory -Force backups | Out-Null
+$name = "vulnflow-$(Get-Date -Format yyyyMMdd-HHmmss).dump"
+vf exec -T db pg_dump -U report_manager -Fc -f /tmp/$name report_manager
+vf cp db:/tmp/$name backups/$name
+```
+
+The repository's `.gitattributes` keeps LF line endings even when Git's `core.autocrlf` is on. If you cloned an older copy that has CRLF endings, clone it again. If you prefer `make`, the Makefile also works from Git Bash or WSL with `make` installed.
 
 ### Option B: Without Docker
 
@@ -124,8 +178,7 @@ Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node 22+, pnpm, Po
 ```bash
 make install     # backend + frontend dependencies
 make dev-db      # creates rm_dev and rm_test databases
-make migrate
-cd backend && .venv/bin/python -m app.cli create-admin && cd ..
+make migrate     # also creates the default admin (admin / admin123)
 make demo        # optional: synthetic data
 ```
 
@@ -149,7 +202,7 @@ The UI runs at <http://localhost:5173> and the API docs at <http://localhost:800
 
 1. Create a database and user in PostgreSQL, and make sure Redis is running.
 2. Copy `.env.example` to `backend/.env`. Set `RM_SECRET_KEY`, uncomment `RM_DATABASE_URL` and `RM_REDIS_URL`, and point them at your services. Set `RM_STORAGE_DIR` to a directory outside the web root.
-3. Install and migrate: `cd backend && uv sync --no-dev && .venv/bin/alembic upgrade head`, then `.venv/bin/python -m app.cli create-admin`.
+3. Install and migrate: `cd backend && uv sync --no-dev && .venv/bin/alembic upgrade head`, then `.venv/bin/python -m app.cli ensure-admin` to create the [default admin](#default-admin-account), or `create-admin` for one with a random password.
 4. Run the API with `.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers`, and run the worker with the command from `make worker`. Use systemd or a similar tool to keep both running. Run **one** worker only, because it also runs the scheduler.
 5. Build the UI with `cd frontend && pnpm install && pnpm build`, and serve `frontend/dist` with nginx. Use [frontend/nginx.conf](frontend/nginx.conf) as the template, changing `proxy_pass http://api:8000` to `http://127.0.0.1:8000`.
 
@@ -176,6 +229,7 @@ Run these inside `backend/` with `.venv/bin/python -m app.cli …`, or in Docker
 
 | Command | What it does |
 |---|---|
+| `ensure-admin` | Create the [default admin](#default-admin-account) (`admin` / `admin123`) if there are no users yet. Runs automatically after migrations |
 | `create-admin [--username admin] [--email …] [--password …]` | Create an admin. A random temporary password is printed if you omit one |
 | `seed-demo [--months 4] [--hosts-per-network 12]` | Load demo networks and synthetic scans into the database |
 | `demo-files [--out demo-data]` | Write synthetic `.nessus` files to try the upload flow |
