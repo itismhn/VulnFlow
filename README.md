@@ -169,6 +169,37 @@ vf cp db:/tmp/$name backups/$name
 
 The repository's `.gitattributes` keeps LF line endings even when Git's `core.autocrlf` is on. If you cloned an older copy that has CRLF endings, clone it again. If you prefer `make`, the Makefile also works from Git Bash or WSL with `make` installed.
 
+#### Servers without internet access
+
+Building the images needs internet (base images, Python and npm packages). For a server that can't reach the internet or GitHub, build everything on a machine that can, then copy one zip file over.
+
+On the connected machine (macOS or Linux with Docker, any CPU):
+
+```bash
+make docker-bundle    # builds linux/amd64 images, writes dist/vulnflow-offline.zip
+```
+
+The zip holds all four images (`vulnflow-images.tar`), a compose file that runs them without building, `.env.example`, and this README. Use `PLATFORM=linux/arm64 make docker-bundle` for an ARM server.
+
+On the offline server, extract the zip, `cd` into `vulnflow-offline`, and run in PowerShell:
+
+```powershell
+docker load -i vulnflow-images.tar
+# Create .env with the New-Hex / Get-Content lines from "Docker on Windows" above
+function vf { docker compose -f deploy/docker-compose.yml --env-file .env @args }
+vf up -d --pull never
+```
+
+To upgrade, build a new bundle, run `docker load` again on the server, and then run `vf up -d --pull never`. Your data volumes are kept.
+
+**The server needs Linux containers.** All VulnFlow images are Linux images. Windows Server's built-in Docker Engine runs Windows containers only, and Docker Desktop is not supported on Windows Server. Use one of these instead:
+
+- A Windows 10/11 machine with Docker Desktop.
+- Windows Server 2022 or 2025 with WSL 2, and Docker Engine installed inside the WSL Linux distribution.
+- A Linux VM (Hyper-V or similar).
+
+Run `docker version` and check that `Server: ... OS/Arch` says `linux/amd64`.
+
 ### Option B: Without Docker
 
 Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node 22+, pnpm, PostgreSQL 16+, Redis, and Pango for PDF reports (`brew install pango` on macOS, `apt install libpango-1.0-0 libpangoft2-1.0-0` on Debian/Ubuntu). HTML, Excel, and CSV reports work without Pango.
@@ -257,6 +288,7 @@ All settings are environment variables with the `RM_` prefix. See [.env.example]
 - **API cannot connect to the database after changing `POSTGRES_PASSWORD`:** the database volume keeps the original password. Change it back, or update the password inside PostgreSQL.
 - **Upload stuck in "queued":** the worker is not running. Check `make docker-logs` (Docker) or the `make worker` terminal.
 - **PDF reports fail outside Docker:** install Pango (see requirements above).
+- **`unable to get image 'vulnflow-api:latest': request returned 500`:** the Docker client can't reach a Linux engine. Docker Desktop is not running, it is set to Windows containers, or the host only has the Windows Server engine. See [Servers without internet access](#servers-without-internet-access).
 - **Port 8080 already in use:** set `HTTP_PORT` in `.env` and run `make docker-up` again.
 
 ## Architecture

@@ -1,10 +1,13 @@
 .PHONY: help install dev-db migrate api worker web test lint typecheck demo \
-	docker-env docker-up docker-down docker-ps docker-logs docker-admin docker-demo docker-backup
+	docker-env docker-up docker-down docker-ps docker-logs docker-admin docker-demo docker-backup docker-bundle
 
 BACKEND := backend
 FRONTEND := frontend
 PY := $(BACKEND)/.venv/bin
 COMPOSE := docker compose -f deploy/docker-compose.yml --env-file .env
+BUNDLE := dist/vulnflow-offline
+PLATFORM ?= linux/amd64
+IMAGES := vulnflow-api:latest vulnflow-web:latest postgres:17-alpine redis:7-alpine
 
 help:  ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -73,3 +76,16 @@ docker-backup:  ## Dump the database to backups/ (uploaded files live in the sto
 	@mkdir -p backups
 	$(COMPOSE) exec -T db pg_dump -U report_manager -Fc report_manager > backups/vulnflow-$$(date +%Y%m%d-%H%M%S).dump
 	@ls -lh backups | tail -1
+
+docker-bundle:  ## Build images for a host without internet into dist/vulnflow-offline.zip (PLATFORM=linux/amd64)
+	rm -rf $(BUNDLE) dist/vulnflow-offline.zip && mkdir -p $(BUNDLE)/deploy
+	docker build --platform $(PLATFORM) -t vulnflow-api:latest $(BACKEND)
+	docker build --platform $(PLATFORM) -t vulnflow-web:latest $(FRONTEND)
+	docker pull --platform $(PLATFORM) postgres:17-alpine
+	docker pull --platform $(PLATFORM) redis:7-alpine
+	docker save --platform $(PLATFORM) -o $(BUNDLE)/vulnflow-images.tar $(IMAGES)
+	@# The offline host has no source tree, so it runs the prebuilt images only
+	grep -v '^ *build: ' deploy/docker-compose.yml > $(BUNDLE)/deploy/docker-compose.yml
+	cp .env.example README.md $(BUNDLE)/
+	cd dist && zip -qr vulnflow-offline.zip vulnflow-offline
+	@ls -lh dist/vulnflow-offline.zip

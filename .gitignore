@@ -35,3 +35,4 @@ backend/.dev-credentials
 
 # Database dumps from make docker-backup
 backups/
+/dist/
