@@ -171,34 +171,18 @@ The repository's `.gitattributes` keeps LF line endings even when Git's `core.au
 
 #### Servers without internet access
 
-Building the images needs internet (base images, Python and npm packages). For a server that can't reach the internet or GitHub, build everything on a machine that can, then copy one zip file over.
-
-On the connected machine (macOS or Linux with Docker, any CPU):
+The server doesn't need internet. On a PC that has internet, build all images into one zip, copy it over (USB stick or file share), then load and start it on the server:
 
 ```bash
-make docker-bundle    # builds linux/amd64 images, writes dist/vulnflow-offline.zip
+make docker-bundle    # on the connected PC: writes dist/vulnflow-offline.zip
 ```
 
-The zip holds all four images (`vulnflow-images.tar`), a compose file that runs them without building, `.env.example`, and this README. Use `PLATFORM=linux/arm64 make docker-bundle` for an ARM server.
-
-On the offline server, extract the zip, `cd` into `vulnflow-offline`, and run in PowerShell:
-
-```powershell
-docker load -i vulnflow-images.tar
-# Create .env with the New-Hex / Get-Content lines from "Docker on Windows" above
-function vf { docker compose -f deploy/docker-compose.yml --env-file .env @args }
-vf up -d --pull never
+```bash
+docker load -i vulnflow-images.tar                                          # on the server
+docker compose -f deploy/docker-compose.yml --env-file .env up -d --pull never
 ```
 
-To upgrade, build a new bundle, run `docker load` again on the server, and then run `vf up -d --pull never`. Your data volumes are kept.
-
-**The server needs Linux containers.** All VulnFlow images are Linux images. Windows Server's built-in Docker Engine runs Windows containers only, and Docker Desktop is not supported on Windows Server. Use one of these instead:
-
-- A Windows 10/11 machine with Docker Desktop.
-- Windows Server 2022 or 2025 with WSL 2, and Docker Engine installed inside the WSL Linux distribution.
-- A Linux VM (Hyper-V or similar).
-
-Run `docker version` and check that `Server: ... OS/Arch` says `linux/amd64`.
+**[Offline installation guide](docs/offline-install.md)** has every step for Windows and Linux: building without `make`, proxies, creating `.env`, upgrades, backups, and the server requirements. Windows Server needs WSL 2 or a Linux VM, because VulnFlow uses Linux containers.
 
 ### Option B: Without Docker
 

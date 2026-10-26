@@ -7,6 +7,8 @@ PY := $(BACKEND)/.venv/bin
 COMPOSE := docker compose -f deploy/docker-compose.yml --env-file .env
 BUNDLE := dist/vulnflow-offline
 PLATFORM ?= linux/amd64
+# Extra docker build flags, e.g. BUILD_FLAGS="--build-arg HTTPS_PROXY=http://proxy:3128"
+BUILD_FLAGS ?=
 IMAGES := vulnflow-api:latest vulnflow-web:latest postgres:17-alpine redis:7-alpine
 
 help:  ## Show available commands
@@ -79,13 +81,13 @@ docker-backup:  ## Dump the database to backups/ (uploaded files live in the sto
 
 docker-bundle:  ## Build images for a host without internet into dist/vulnflow-offline.zip (PLATFORM=linux/amd64)
 	rm -rf $(BUNDLE) dist/vulnflow-offline.zip && mkdir -p $(BUNDLE)/deploy
-	docker build --platform $(PLATFORM) -t vulnflow-api:latest $(BACKEND)
-	docker build --platform $(PLATFORM) -t vulnflow-web:latest $(FRONTEND)
+	docker build --platform $(PLATFORM) $(BUILD_FLAGS) -t vulnflow-api:latest $(BACKEND)
+	docker build --platform $(PLATFORM) $(BUILD_FLAGS) -t vulnflow-web:latest $(FRONTEND)
 	docker pull --platform $(PLATFORM) postgres:17-alpine
 	docker pull --platform $(PLATFORM) redis:7-alpine
 	docker save --platform $(PLATFORM) -o $(BUNDLE)/vulnflow-images.tar $(IMAGES)
 	@# The offline host has no source tree, so it runs the prebuilt images only
 	grep -v '^ *build: ' deploy/docker-compose.yml > $(BUNDLE)/deploy/docker-compose.yml
-	cp .env.example README.md $(BUNDLE)/
+	cp .env.example README.md docs/offline-install.md $(BUNDLE)/
 	cd dist && zip -qr vulnflow-offline.zip vulnflow-offline
 	@ls -lh dist/vulnflow-offline.zip
