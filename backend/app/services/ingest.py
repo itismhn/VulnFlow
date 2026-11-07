@@ -24,6 +24,7 @@ from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.core.db import chunked
 from app.models import (
     Asset,
     Finding,
@@ -126,23 +127,26 @@ def _upsert_assets(db: Session, hosts: list[ParsedHost], times: dict[str, dateti
         }
         for h in hosts
     ]
-    stmt = insert(Asset).values(rows)
-    ex = stmt.excluded
-    keep = lambda col: func.coalesce(func.nullif(getattr(ex, col), ""), getattr(Asset, col))  # noqa: E731
-    upsert = stmt.on_conflict_do_update(
-        index_elements=[Asset.ip],
-        set_={
-            "hostname": keep("hostname"),
-            "fqdn": keep("fqdn"),
-            "netbios": keep("netbios"),
-            "mac": keep("mac"),
-            "os": keep("os"),
-            "first_seen": func.least(Asset.first_seen, ex.first_seen),
-            "last_seen": func.greatest(Asset.last_seen, ex.last_seen),
-            "updated_at": func.now(),
-        },
-    ).returning(Asset.id, Asset.ip)
-    return {str(ip): asset_id for asset_id, ip in db.execute(upsert)}
+    out: dict[str, int] = {}
+    for chunk in chunked(rows):
+        stmt = insert(Asset).values(chunk)
+        ex = stmt.excluded
+        keep = lambda col, ex=ex: func.coalesce(func.nullif(getattr(ex, col), ""), getattr(Asset, col))  # noqa: E731
+        upsert = stmt.on_conflict_do_update(
+            index_elements=[Asset.ip],
+            set_={
+                "hostname": keep("hostname"),
+                "fqdn": keep("fqdn"),
+                "netbios": keep("netbios"),
+                "mac": keep("mac"),
+                "os": keep("os"),
+                "first_seen": func.least(Asset.first_seen, ex.first_seen),
+                "last_seen": func.greatest(Asset.last_seen, ex.last_seen),
+                "updated_at": func.now(),
+            },
+        ).returning(Asset.id, Asset.ip)
+        out.update({str(ip): asset_id for asset_id, ip in db.execute(upsert)})
+    return out
 
 
 def _upsert_plugins(db: Session, items: Iterable[ParsedItem]) -> None:
@@ -153,12 +157,13 @@ def _upsert_plugins(db: Session, items: Iterable[ParsedItem]) -> None:
     for row in rows:
         row["name"] = row["name"][:512]
         row["family"] = row["family"][:128]
-    stmt = insert(Plugin).values(rows)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=[Plugin.id],
-        set_={**{k: getattr(stmt.excluded, k) for k in rows[0] if k != "id"}, "updated_at": func.now()},
-    )
-    db.execute(stmt)
+    for chunk in chunked(rows):
+        stmt = insert(Plugin).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Plugin.id],
+            set_={**{k: getattr(stmt.excluded, k) for k in rows[0] if k != "id"}, "updated_at": func.now()},
+        )
+        db.execute(stmt)
 
 
 def _process_batch(
@@ -177,23 +182,19 @@ def _process_batch(
     asset_ids = _upsert_assets(db, hosts, times)
     stats.asset_ids.extend(asset_ids.values())
 
-    db.execute(
-        insert(ScanHost)
-        .values(
-            [
-                {
-                    "scan_id": scan.id,
-                    "asset_id": asset_ids[h.ip],
-                    "started_at": times[h.ip],
-                    "ended_at": h.ended_at,
-                    "credentialed": h.credentialed,
-                    "os": h.os[:255],
-                }
-                for h in hosts
-            ]
-        )
-        .on_conflict_do_nothing()
-    )
+    host_rows = [
+        {
+            "scan_id": scan.id,
+            "asset_id": asset_ids[h.ip],
+            "started_at": times[h.ip],
+            "ended_at": h.ended_at,
+            "credentialed": h.credentialed,
+            "os": h.os[:255],
+        }
+        for h in hosts
+    ]
+    for chunk in chunked(host_rows):
+        db.execute(insert(ScanHost).values(chunk).on_conflict_do_nothing())
 
     all_items = [item for h in hosts for item in h.items]
     _upsert_plugins(db, all_items)
@@ -287,12 +288,16 @@ def _process_batch(
         elif t < current.first_seen:
             updates.append({"id": current.id, "first_seen": t})
 
-    if new_rows:
-        inserted = db.execute(
-            insert(Finding)
-            .values(new_rows)
-            .returning(Finding.id, Finding.asset_id, Finding.plugin_id, Finding.port, Finding.protocol)
+    inserted: list[Any] = []
+    for chunk in chunked(new_rows):
+        inserted.extend(
+            db.execute(
+                insert(Finding)
+                .values(chunk)
+                .returning(Finding.id, Finding.asset_id, Finding.plugin_id, Finding.port, Finding.protocol)
+            )
         )
+    if new_rows:
         for fid, asset_id, plugin_id, port, protocol in inserted:
             key = (asset_id, plugin_id, port, protocol)
             finding_ids[key] = fid
@@ -315,25 +320,21 @@ def _process_batch(
         for rows in groups.values():
             db.execute(update(Finding), rows)
 
-    db.execute(
-        insert(FindingOccurrence)
-        .values(
-            [
-                {
-                    "finding_id": finding_ids[key],
-                    "scan_id": scan.id,
-                    "severity": item.severity,
-                    "plugin_output": item.output,
-                }
-                for key, (item, _t) in observed.items()
-            ]
-        )
-        .on_conflict_do_nothing()
-    )
-    if events:
-        # Multi-row VALUES needs identical keys in every row
-        defaults = {"from_status": None, "to_status": None, "note": "", "scan_id": scan.id}
-        db.execute(insert(FindingEvent).values([{**defaults, **e} for e in events]))
+    occurrences = [
+        {
+            "finding_id": finding_ids[key],
+            "scan_id": scan.id,
+            "severity": item.severity,
+            "plugin_output": item.output,
+        }
+        for key, (item, _t) in observed.items()
+    ]
+    for occ_rows in chunked(occurrences):
+        db.execute(insert(FindingOccurrence).values(occ_rows).on_conflict_do_nothing())
+    # Multi-row VALUES needs identical keys in every row
+    defaults = {"from_status": None, "to_status": None, "note": "", "scan_id": scan.id}
+    for event_rows in chunked([{**defaults, **e} for e in events]):
+        db.execute(insert(FindingEvent).values(event_rows))
 
 
 _AUTO_FIX_CANDIDATES = text(
@@ -380,21 +381,19 @@ def _auto_fix(db: Session, scan: Scan, fallback_time: datetime) -> int:
             for c in candidates
         ],
     )
-    db.execute(
-        insert(FindingEvent).values(
-            [
-                {
-                    "finding_id": c.id,
-                    "kind": FindingEventKind.STATUS,
-                    "from_status": c.status,
-                    "to_status": FindingStatus.FIXED,
-                    "scan_id": scan.id,
-                    "note": "Not detected by a newer scan of this host",
-                }
-                for c in candidates
-            ]
-        )
-    )
+    events = [
+        {
+            "finding_id": c.id,
+            "kind": FindingEventKind.STATUS,
+            "from_status": c.status,
+            "to_status": FindingStatus.FIXED,
+            "scan_id": scan.id,
+            "note": "Not detected by a newer scan of this host",
+        }
+        for c in candidates
+    ]
+    for chunk in chunked(events):
+        db.execute(insert(FindingEvent).values(chunk))
     return len(candidates)
 
 

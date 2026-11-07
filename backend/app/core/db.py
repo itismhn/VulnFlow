@@ -1,4 +1,5 @@
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
+from typing import Any
 
 from sqlalchemy import MetaData, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -25,3 +26,16 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 def get_db() -> Iterator[Session]:
     with SessionLocal() as session:
         yield session
+
+
+# Postgres accepts at most 65,535 bind parameters per statement; stay well below
+_MAX_BIND_PARAMS = 30_000
+
+
+def chunked[T: Mapping[str, Any]](rows: Sequence[T]) -> Iterator[Sequence[T]]:
+    """Split rows for a multi-row INSERT so each statement fits the parameter limit."""
+    if not rows:
+        return
+    size = max(1, _MAX_BIND_PARAMS // max(1, len(rows[0])))
+    for start in range(0, len(rows), size):
+        yield rows[start : start + size]

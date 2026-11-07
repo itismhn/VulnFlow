@@ -2,12 +2,18 @@
 
 from typing import Any
 
-from sqlalchemy import and_, cast, insert, select, update
-from sqlalchemy.dialects.postgresql import CIDR
+from sqlalchemy import Integer, and_, any_, bindparam, cast, insert, select, update
+from sqlalchemy.dialects.postgresql import ARRAY, CIDR
 from sqlalchemy.orm import Session
 
+from app.core.db import chunked
 from app.models import Asset, Finding, FindingEvent, SuppressionRule
 from app.models.enums import FindingEventKind, FindingStatus
+
+
+def _id_in(col: Any, ids: list[int]) -> Any:
+    """`col = ANY(:ids)` as a single array parameter, however many ids there are."""
+    return col == any_(bindparam(None, list(ids), type_=ARRAY(Integer)))
 
 
 def _matches(rule: SuppressionRule) -> list[Any]:
@@ -32,30 +38,29 @@ def apply_rule(
     if asset_ids is not None:
         if not asset_ids:
             return 0
-        conds.append(Finding.asset_id.in_(asset_ids))
+        conds.append(_id_in(Finding.asset_id, asset_ids))
     rows = db.execute(select(Finding.id, Finding.status).where(and_(*conds))).all()
     if not rows:
         return 0
     note = f"Suppressed by rule #{rule.id}: {rule.reason}"
-    db.execute(
-        insert(FindingEvent).values(
-            [
-                {
-                    "finding_id": fid,
-                    "kind": FindingEventKind.STATUS,
-                    "from_status": old,
-                    "to_status": FindingStatus.FALSE_POSITIVE,
-                    "note": note,
-                    "actor_id": actor_id,
-                    "scan_id": None,
-                }
-                for fid, old in rows
-            ]
-        )
-    )
+    for chunk in chunked(
+        [
+            {
+                "finding_id": fid,
+                "kind": FindingEventKind.STATUS,
+                "from_status": old,
+                "to_status": FindingStatus.FALSE_POSITIVE,
+                "note": note,
+                "actor_id": actor_id,
+                "scan_id": None,
+            }
+            for fid, old in rows
+        ]
+    ):
+        db.execute(insert(FindingEvent).values(chunk))
     db.execute(
         update(Finding)
-        .where(Finding.id.in_([r[0] for r in rows]))
+        .where(_id_in(Finding.id, [r[0] for r in rows]))
         .values(status=FindingStatus.FALSE_POSITIVE, fixed_at=None)
         .execution_options(synchronize_session=False)
     )
@@ -83,25 +88,24 @@ def release_rule(db: Session, rule: SuppressionRule, actor_id: int | None = None
     )
     if not ids:
         return 0
-    db.execute(
-        insert(FindingEvent).values(
-            [
-                {
-                    "finding_id": fid,
-                    "kind": FindingEventKind.STATUS,
-                    "from_status": FindingStatus.FALSE_POSITIVE,
-                    "to_status": FindingStatus.OPEN,
-                    "note": f"Suppression rule #{rule.id} removed",
-                    "actor_id": actor_id,
-                    "scan_id": None,
-                }
-                for fid in ids
-            ]
-        )
-    )
+    for chunk in chunked(
+        [
+            {
+                "finding_id": fid,
+                "kind": FindingEventKind.STATUS,
+                "from_status": FindingStatus.FALSE_POSITIVE,
+                "to_status": FindingStatus.OPEN,
+                "note": f"Suppression rule #{rule.id} removed",
+                "actor_id": actor_id,
+                "scan_id": None,
+            }
+            for fid in ids
+        ]
+    ):
+        db.execute(insert(FindingEvent).values(chunk))
     db.execute(
         update(Finding)
-        .where(Finding.id.in_(ids))
+        .where(_id_in(Finding.id, ids))
         .values(status=FindingStatus.OPEN)
         .execution_options(synchronize_session=False)
     )
