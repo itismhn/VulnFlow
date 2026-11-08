@@ -6,8 +6,10 @@ advisory lock, so concurrent workers can never race on asset or finding upserts.
 Lifecycle rules (per host the scan covered):
   * new (asset, plugin, port, protocol)             -> finding created as `open`
   * seen again in a newer scan                      -> `last_seen` bumped; `fixed` becomes `reopened`
-  * seen in an older scan (out-of-order import)     -> only `first_seen` may move earlier
-  * active finding missing from a newer scan        -> `fixed`, unless:
+  * seen in an older scan (out-of-order import)     -> only `first_seen` may move earlier;
+                                                       a finding a newer scan fixed stays fixed
+  * active finding missing from a newer scan        -> `fixed` (also when that newer scan
+                                                       was imported first), unless:
       - its plugin family was disabled in this scan's policy, or
       - this host scan was uncredentialed but the last sighting was credentialed
   * `risk_accepted` / `false_positive` are never changed by imports
@@ -92,7 +94,9 @@ def ingest_scan(db: Session, scan: Scan, progress: Callable[[int], None] | None 
     if batch:
         _process_batch(db, scan, batch, stats, fallback_time)
 
-    stats.fixed = _auto_fix(db, scan, fallback_time)
+    # The auto-fix safeguard needs this scan's policy before _finalize_scan runs
+    scan.disabled_families = parser.meta.disabled_families
+    stats.fixed = _auto_fix(db, scan, stats.asset_ids, fallback_time)
     networks.reassign_assets(db, stats.asset_ids)
     suppression.apply_all(db, stats.asset_ids)
     risk.expire_due(db)
@@ -227,6 +231,7 @@ def _process_batch(
                 Finding.first_seen,
                 Finding.last_seen,
                 Finding.reopen_count,
+                Finding.fixed_at,
             ).where(Finding.asset_id.in_(set(asset_ids.values())))
         )
     }
@@ -267,7 +272,9 @@ def _process_batch(
                 "last_scan_id": scan.id,
                 "first_seen": min(current.first_seen, t),
             }
-            if current.status == FindingStatus.FIXED:
+            # An older scan imported late must not undo a newer scan's fix
+            fixed_later = current.fixed_at is not None and current.fixed_at > t
+            if current.status == FindingStatus.FIXED and not fixed_later:
                 row.update(
                     status=FindingStatus.REOPENED,
                     fixed_at=None,
@@ -337,18 +344,22 @@ def _process_batch(
         db.execute(insert(FindingEvent).values(event_rows))
 
 
+# For each active finding on the given assets, the earliest later host scan that
+# should have seen it and did not. Usually that is the scan being imported; after
+# an out-of-order import of an older scan it can be a newer one already in the DB.
 _AUTO_FIX_CANDIDATES = text(
     """
-    SELECT f.id, f.status, sh.started_at AS observed_at
+    SELECT DISTINCT ON (f.id) f.id, f.status, sh.scan_id, sh.started_at AS observed_at
     FROM findings f
-    JOIN scan_hosts sh ON sh.asset_id = f.asset_id AND sh.scan_id = :scan_id
     JOIN plugins p ON p.id = f.plugin_id
-    WHERE f.status = ANY(:active)
-      AND f.last_seen < sh.started_at
-      AND NOT (p.family = ANY(:disabled))
+    JOIN scan_hosts sh ON sh.asset_id = f.asset_id AND sh.started_at > f.last_seen
+    JOIN scans s ON s.id = sh.scan_id
+    WHERE f.asset_id = ANY(:asset_ids)
+      AND f.status = ANY(:active)
+      AND NOT (p.family = ANY(coalesce(s.disabled_families, '{}')))
       AND NOT EXISTS (
           SELECT 1 FROM finding_occurrences o
-          WHERE o.finding_id = f.id AND o.scan_id = :scan_id
+          WHERE o.finding_id = f.id AND o.scan_id = sh.scan_id
       )
       AND (
           sh.credentialed
@@ -359,18 +370,19 @@ _AUTO_FIX_CANDIDATES = text(
                 AND prev.credentialed
           )
       )
+    ORDER BY f.id, sh.started_at
     """
 )
 
 
-def _auto_fix(db: Session, scan: Scan, fallback_time: datetime) -> int:
+def _auto_fix(db: Session, scan: Scan, asset_ids: list[int], fallback_time: datetime) -> int:
+    """Close active findings a newer host scan did not see. Returns how many this scan closed."""
+    if not asset_ids:
+        return 0
+    db.flush()  # the candidate query reads this scan's disabled_families
     candidates = db.execute(
         _AUTO_FIX_CANDIDATES,
-        {
-            "scan_id": scan.id,
-            "active": [s.value for s in ACTIVE_STATUSES],
-            "disabled": scan.disabled_families or [],
-        },
+        {"asset_ids": sorted(set(asset_ids)), "active": [s.value for s in ACTIVE_STATUSES]},
     ).all()
     if not candidates:
         return 0
@@ -387,14 +399,15 @@ def _auto_fix(db: Session, scan: Scan, fallback_time: datetime) -> int:
             "kind": FindingEventKind.STATUS,
             "from_status": c.status,
             "to_status": FindingStatus.FIXED,
-            "scan_id": scan.id,
+            # Credit the scan that did not see it, so deleting that scan reverts this
+            "scan_id": c.scan_id,
             "note": "Not detected by a newer scan of this host",
         }
         for c in candidates
     ]
     for chunk in chunked(events):
         db.execute(insert(FindingEvent).values(chunk))
-    return len(candidates)
+    return sum(1 for c in candidates if c.scan_id == scan.id)
 
 
 def _finalize_scan(db: Session, scan: Scan, meta: Any, stats: IngestStats) -> None:

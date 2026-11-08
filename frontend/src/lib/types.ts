@@ -485,6 +485,15 @@ export interface SoftwareGroup {
   versions: { version: string; hosts: number }[];
 }
 
+export interface SoftwareVendor {
+  vendor: string;
+  label: string;
+  hosts: number;
+  product_count: number;
+  version_count: number;
+  products: { product: string; name: string; hosts: number }[];
+}
+
 export interface SoftwareInstance {
   id: number;
   asset_id: number;

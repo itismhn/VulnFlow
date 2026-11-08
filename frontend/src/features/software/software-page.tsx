@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Download, Layers, PackageSearch, RefreshCw, Search, X } from "lucide-react";
+import { Building2, ChevronRight, Download, Layers, PackageSearch, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { DropdownMenu, MenuItem } from "@/components/ui/overlay";
@@ -20,7 +20,14 @@ import { useAuth } from "@/lib/auth";
 import { useDebounced } from "@/lib/hooks";
 import { useNetworks } from "@/lib/queries";
 import type { SoftwareSearch } from "@/lib/search";
-import type { Page, SoftwareCategory, SoftwareGroup, SoftwareInstance, SoftwareStats } from "@/lib/types";
+import type {
+  Page,
+  SoftwareCategory,
+  SoftwareGroup,
+  SoftwareInstance,
+  SoftwareStats,
+  SoftwareVendor,
+} from "@/lib/types";
 import { cn, fmtDate, fmtNum } from "@/lib/utils";
 
 export const CATEGORY_LABELS: Record<SoftwareCategory, string> = {
@@ -42,6 +49,13 @@ const CATEGORY_TABS: { value: SoftwareCategory | undefined; label: string }[] = 
 
 const PAGE_SIZE = 50;
 
+type View = "vendors" | "products" | "hosts";
+const VIEWS: { value: View; label: string }[] = [
+  { value: "vendors", label: "By vendor" },
+  { value: "products", label: "By product" },
+  { value: "hosts", label: "By host" },
+];
+
 /** Filters sent to the API (everything except view/sort/page). */
 function apiFilters(s: SoftwareSearch) {
   return {
@@ -60,7 +74,7 @@ export function SoftwarePage({ search }: { search: SoftwareSearch }) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const { data: networks = [] } = useNetworks();
-  const view = search.view ?? "products";
+  const view: View = search.view ?? "vendors";
   const page = search.page ?? 1;
 
   const patch = (next: Partial<SoftwareSearch>) =>
@@ -93,6 +107,18 @@ export function SoftwarePage({ search }: { search: SoftwareSearch }) {
   const { data: stats } = useQuery({
     queryKey: ["software", "stats"],
     queryFn: () => api.get<SoftwareStats>("/software/stats"),
+  });
+  const vendors = useQuery({
+    queryKey: ["software", "vendors", filters, search.sort, page],
+    queryFn: () =>
+      api.get<Page<SoftwareVendor>>("/software/vendors", {
+        ...filters,
+        sort: search.sort,
+        page,
+        page_size: PAGE_SIZE,
+      }),
+    enabled: view === "vendors",
+    placeholderData: keepPreviousData,
   });
   const products = useQuery({
     queryKey: ["software", "products", filters, search.sort, page],
@@ -127,7 +153,15 @@ export function SoftwarePage({ search }: { search: SoftwareSearch }) {
   });
 
   const exportUrl = (format: "csv" | "xlsx") => downloadUrl("/software/export", { ...filters, format });
-  const active = view === "products" ? products : hosts;
+  const active = view === "vendors" ? vendors : view === "products" ? products : hosts;
+  const pickProduct = (g: Pick<SoftwareGroup, "vendor" | "product">, v?: string) =>
+    patch({
+      view: "hosts",
+      vendor: g.vendor,
+      product: g.product,
+      version: v === undefined || v === "" ? undefined : `=${v}`,
+      sort: undefined,
+    });
   const empty = stats && stats.instances === 0;
 
   return (
@@ -238,18 +272,18 @@ export function SoftwarePage({ search }: { search: SoftwareSearch }) {
         />
         <div className="ml-auto flex items-center gap-2">
           <div className="flex rounded-md border border-line p-0.5" role="group" aria-label="View">
-            {(["products", "hosts"] as const).map((v) => (
+            {VIEWS.map((v) => (
               <button
-                key={v}
+                key={v.value}
                 type="button"
-                aria-pressed={view === v}
-                onClick={() => patch({ view: v === "hosts" ? "hosts" : undefined, sort: undefined })}
+                aria-pressed={view === v.value}
+                onClick={() => patch({ view: v.value === "vendors" ? undefined : v.value, sort: undefined })}
                 className={cn(
                   "rounded px-2.5 py-1 text-xs font-medium",
-                  view === v ? "bg-surface-2 text-ink" : "text-ink-3 hover:text-ink",
+                  view === v.value ? "bg-surface-2 text-ink" : "text-ink-3 hover:text-ink",
                 )}
               >
-                {v === "products" ? "By product" : "By host"}
+                {v.label}
               </button>
             ))}
           </div>
@@ -259,7 +293,14 @@ export function SoftwarePage({ search }: { search: SoftwareSearch }) {
             className="w-40"
             aria-label="Sort"
           >
-            {view === "products" ? (
+            {view === "vendors" ? (
+              <>
+                <option value="">Most hosts</option>
+                <option value="-products">Most products</option>
+                <option value="-versions">Most versions</option>
+                <option value="name">Name</option>
+              </>
+            ) : view === "products" ? (
               <>
                 <option value="">Most hosts</option>
                 <option value="-versions">Most versions</option>
@@ -278,11 +319,16 @@ export function SoftwarePage({ search }: { search: SoftwareSearch }) {
         </div>
       </div>
 
-      {(search.product || search.vendor) && (
+      {(search.product || search.vendor !== undefined) && (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
           <span className="text-ink-3">Showing</span>
           <Badge tone="brand" className="text-xs">
-            {search.vendor && <span className="text-brand/70">{search.vendor} /</span>}
+            {search.vendor !== undefined && (
+              <span className={cn(search.product && "text-brand/70")}>
+                {search.vendor || "Unknown vendor"}
+                {search.product && " /"}
+              </span>
+            )}
             {search.product}
             <button
               type="button"
@@ -319,20 +365,16 @@ export function SoftwarePage({ search }: { search: SoftwareSearch }) {
             Versions come from Nessus informational plugins, so import a scan. Credentialed scans report
             installed packages and software. Uncredentialed scans only report what services announce.
           </EmptyState>
-        ) : view === "products" ? (
-          <ProductsTable
-            data={products.data}
-            fetching={products.isFetching}
-            onPick={(g, v) =>
-              patch({
-                view: "hosts",
-                vendor: g.vendor,
-                product: g.product,
-                version: v === undefined || v === "" ? undefined : `=${v}`,
-                sort: undefined,
-              })
-            }
+        ) : view === "vendors" ? (
+          <VendorsTable
+            data={vendors.data}
+            fetching={vendors.isFetching}
+            filters={filters}
+            onVendor={(vendor) => patch({ view: "products", vendor, product: undefined, sort: undefined })}
+            onPick={pickProduct}
           />
+        ) : view === "products" ? (
+          <ProductsTable data={products.data} fetching={products.isFetching} onPick={pickProduct} />
         ) : (
           <InstancesTable data={hosts.data} fetching={hosts.isFetching} />
         )}
@@ -346,6 +388,125 @@ export function SoftwarePage({ search }: { search: SoftwareSearch }) {
         )}
       </Card>
     </div>
+  );
+}
+
+function VendorsTable({
+  data,
+  fetching,
+  filters,
+  onVendor,
+  onPick,
+}: {
+  data: Page<SoftwareVendor> | undefined;
+  fetching: boolean;
+  filters: ReturnType<typeof apiFilters>;
+  onVendor: (vendor: string) => void;
+  onPick: (group: Pick<SoftwareGroup, "vendor" | "product">, version?: string) => void;
+}) {
+  if (!data?.items.length) {
+    return <EmptyState icon={<Building2 className="size-8" />} title="No software matches these filters" />;
+  }
+  return (
+    <div className={cn("overflow-x-auto", fetching && "opacity-70")}>
+      <table className="w-full text-sm">
+        <thead className="bg-surface-2/60 text-left text-xs text-ink-3">
+          <tr>
+            <th className="px-4 py-2 font-medium">Vendor</th>
+            <th className="px-4 py-2 font-medium">Products (hosts)</th>
+            <th className="px-4 py-2 text-right font-medium">Versions</th>
+            <th className="px-4 py-2 text-right font-medium">Hosts</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {data.items.map((v) => (
+            <VendorRow key={v.vendor} vendor={v} filters={filters} onVendor={onVendor} onPick={onPick} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function VendorRow({
+  vendor: v,
+  filters,
+  onVendor,
+  onPick,
+}: {
+  vendor: SoftwareVendor;
+  filters: ReturnType<typeof apiFilters>;
+  onVendor: (vendor: string) => void;
+  onPick: (group: Pick<SoftwareGroup, "vendor" | "product">, version?: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const products = useQuery({
+    queryKey: ["software", "products", { ...filters, vendor: v.vendor }, "vendor-row"],
+    queryFn: () =>
+      api.get<Page<SoftwareGroup>>("/software", { ...filters, vendor: v.vendor, page_size: 100 }),
+    enabled: open,
+  });
+  const hidden = v.product_count - v.products.length;
+  return (
+    <>
+      <tr className="align-top hover:bg-surface-2/60">
+        <td className="px-4 py-2.5 whitespace-nowrap">
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="inline-flex items-center gap-1.5 text-left font-medium hover:text-brand"
+          >
+            <ChevronRight className={cn("size-4 text-ink-3 transition-transform", open && "rotate-90")} />
+            {v.label || <span className="text-ink-3 italic">Unknown vendor</span>}
+          </button>
+        </td>
+        <td className="px-4 py-2.5">
+          <div className="flex flex-wrap gap-1">
+            {v.products.map((p) => (
+              <button
+                key={p.product}
+                type="button"
+                onClick={() => onPick({ vendor: v.vendor, product: p.product })}
+                title={`Show the ${p.hosts} host(s) running ${p.name}`}
+                className="inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 text-xs hover:border-brand/40 hover:bg-brand-soft hover:text-brand"
+              >
+                {p.name}
+                <span className="num text-[11px] text-ink-3">{p.hosts}</span>
+              </button>
+            ))}
+            {hidden > 0 && (
+              <button
+                type="button"
+                onClick={() => onVendor(v.vendor)}
+                className="px-1 text-[11px] text-ink-3 hover:text-brand"
+              >
+                +{hidden} more
+              </button>
+            )}
+          </div>
+        </td>
+        <td className="num px-4 py-2.5 text-right font-mono">{fmtNum(v.version_count)}</td>
+        <td className="num px-4 py-2.5 text-right font-mono">{fmtNum(v.hosts)}</td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={4} className="bg-surface-2/40 px-4 py-2">
+            {products.isLoading ? (
+              <Skeleton className="h-10" />
+            ) : (
+              <table className="w-full text-sm">
+                <tbody className="divide-y divide-line">
+                  {products.data?.items.map((g) => (
+                    <ProductRow key={`${g.vendor}|${g.product}`} group={g} onPick={onPick} />
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 

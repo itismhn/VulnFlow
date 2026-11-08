@@ -56,6 +56,21 @@ class SoftwareGroup(BaseModel):
     versions: list[VersionCount]
 
 
+class VendorProduct(BaseModel):
+    product: str
+    name: str
+    hosts: int
+
+
+class SoftwareVendor(BaseModel):
+    vendor: str
+    label: str
+    hosts: int
+    product_count: int
+    version_count: int
+    products: list[VendorProduct]
+
+
 class SoftwareInstance(BaseModel):
     id: int
     asset_id: int

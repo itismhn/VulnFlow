@@ -70,6 +70,7 @@ export interface SoftwareSearch {
   version?: string;
   network_id?: number;
   ip?: string;
+  /** Unset means the default "vendors" view. */
   view?: "products" | "hosts";
   sort?: string;
   page?: number;
@@ -84,7 +85,7 @@ export function parseSoftwareSearch(s: Record<string, unknown>): SoftwareSearch 
     version: str(s.version),
     network_id: num(s.network_id),
     ip: str(s.ip),
-    view: s.view === "hosts" ? "hosts" : undefined,
+    view: s.view === "hosts" || s.view === "products" ? s.view : undefined,
     sort: str(s.sort),
     page: num(s.page),
   };

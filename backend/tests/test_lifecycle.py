@@ -4,10 +4,10 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Finding, FindingEvent, Scan
+from app.models import Finding, FindingEvent, FindingOccurrence, Scan
 from app.models.enums import FindingStatus
 from app.services.demo import CATALOG, DemoHost, write_nessus
 from app.services.ingest import ingest_scan
@@ -99,6 +99,48 @@ def test_out_of_order_import_does_not_close_or_bump(db: Session, tmp_path: Path)
     assert smb.first_seen == T0
     assert smb.last_seen == T0 + timedelta(days=30)
     assert status_of(db, "1", RDP.plugin_id) == FindingStatus.OPEN
+    # Seen only by the older scan: the newer one already shows it gone
+    tls = db.scalars(select(Finding).where(Finding.plugin_id == TLS10.plugin_id)).unique().one()
+    assert tls.status == FindingStatus.FIXED
+    assert tls.fixed_at is not None and tls.fixed_at >= T0 + timedelta(days=30)
+
+
+def test_late_import_of_older_scan_does_not_reopen(db: Session, tmp_path: Path) -> None:
+    import_scan(db, tmp_path, "jan", [host("10.0.0.1", SMB)], T0)
+    import_scan(db, tmp_path, "mar", [host("10.0.0.1")], T0 + timedelta(days=60))
+    assert status_of(db, "1", SMB.plugin_id) == FindingStatus.FIXED
+    # February is imported last and still shows SMB: March already proved it fixed
+    feb = import_scan(db, tmp_path, "feb", [host("10.0.0.1", SMB)], T0 + timedelta(days=30))
+    assert feb.reopened_count == 0
+    smb = db.scalars(select(Finding).where(Finding.plugin_id == SMB.plugin_id)).unique().one()
+    assert smb.status == FindingStatus.FIXED
+    assert smb.last_seen.date() == (T0 + timedelta(days=30)).date()
+
+
+def test_subnet_scan_leaves_other_subnets_alone(db: Session, tmp_path: Path) -> None:
+    # Month 1: one big scan of the whole estate
+    import_scan(
+        db, tmp_path, "full", [host("10.1.0.5", SMB), host("10.2.0.5", RDP), host("10.3.0.5", TLS10)], T0
+    )
+    # Month 2: only 10.2.0.0/24 is rescanned, and RDP is gone there
+    s2 = import_scan(db, tmp_path, "subnet", [host("10.2.0.5")], T0 + timedelta(days=30))
+    assert s2.fixed_count == 1
+    assert status_of(db, "5", RDP.plugin_id) == FindingStatus.FIXED
+    assert status_of(db, "5", SMB.plugin_id) == FindingStatus.OPEN
+    assert status_of(db, "5", TLS10.plugin_id) == FindingStatus.OPEN
+    # Nothing is deleted: the fixed finding keeps its history
+    rdp = db.scalars(select(Finding).where(Finding.plugin_id == RDP.plugin_id)).unique().one()
+    assert db.scalar(select(func.count()).where(FindingOccurrence.finding_id == rdp.id)) == 1
+    assert rdp.fixed_at is not None
+
+
+def test_disabled_family_is_not_closed_on_first_import(db: Session, tmp_path: Path) -> None:
+    import_scan(db, tmp_path, "a", [host("10.0.0.1", SMB)], T0)
+    s2 = import_scan(
+        db, tmp_path, "b", [host("10.0.0.1")], T0 + timedelta(days=7), disabled_families=(SMB.family,)
+    )
+    assert s2.fixed_count == 0
+    assert status_of(db, "1", SMB.plugin_id) == FindingStatus.OPEN
 
 
 def test_reingest_is_idempotent(db: Session, tmp_path: Path) -> None:

@@ -20,7 +20,7 @@ from app.models import Asset, AssetSoftware, Finding, FindingOccurrence, Network
 from app.models.enums import FindingStatus
 from app.schemas.software import SoftwareFilters
 from app.services.scoping import scope_assets
-from app.services.software_extract import OS, Software, extract, split_os, version_key
+from app.services.software_extract import OS, Software, extract, identify, split_os, version_key
 
 CHUNK = 200
 
@@ -142,11 +142,13 @@ def _rebuild_chunk(db: Session, ids: list[int]) -> int:
         cpe = os_cpe.get(asset_id)
         if os_name:
             name, version = split_os(os_name)
+            vendor, product = identify(name)
             sw = Software(
                 OS,
                 name[:255],
                 version[:128],
-                vendor=cpe.vendor if cpe else "",
+                vendor=(cpe.vendor if cpe else "") or vendor,
+                product=product if not cpe or vendor in ("", cpe.vendor) else "",
                 cpe=cpe.cpe if cpe else "",
             )
         elif cpe:

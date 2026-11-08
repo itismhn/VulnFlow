@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, literal_column, select, tuple_
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 
 from app.core.audit import audit
 from app.core.db import SessionLocal
@@ -20,10 +21,13 @@ from app.schemas.software import (
     SoftwareInstance,
     SoftwareQuery,
     SoftwareStats,
+    SoftwareVendor,
+    VendorProduct,
     VersionCount,
 )
 from app.services.reporting.xlsx import rows_to_xlsx, safe_cell
 from app.services.software import apply_filters, base_query, export_rows, instance_query
+from app.services.software_extract import vendor_label
 
 router = APIRouter(prefix="/software", tags=["software"])
 
@@ -31,7 +35,16 @@ Reader = Annotated[User, Depends(require(Perm.ASSETS_READ))]
 Admin = Annotated[User, Depends(require(Perm.SETTINGS_MANAGE))]
 
 MAX_VERSIONS_PER_GROUP = 50
+MAX_PRODUCTS_PER_VENDOR = 12
 KEY = (AssetSoftware.vendor, AssetSoftware.product)
+
+
+def _display_name() -> Any:
+    """The shortest name any source gave the product, e.g. "OpenSSL" over "OpenSSL Project OpenSSL"."""
+    return func.array_agg(
+        aggregate_order_by(AssetSoftware.name, func.length(AssetSoftware.name), AssetSoftware.name)
+    )[1]
+
 
 GROUP_SORTS: dict[str, Any] = {
     "hosts": literal_column("hosts"),
@@ -84,7 +97,7 @@ def list_software(
             *KEY,
             # A product found by several plugins can span categories (e.g. application and service)
             func.min(AssetSoftware.category).label("category"),
-            func.min(AssetSoftware.name).label("name"),
+            _display_name().label("name"),
             func.count(func.distinct(AssetSoftware.asset_id)).label("hosts"),
             func.count(func.distinct(AssetSoftware.version)).label("version_count"),
         ),
@@ -133,6 +146,85 @@ def list_software(
                 versions=versions.get((g.vendor, g.product), []),
             )
             for g in groups
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+VENDOR_SORTS: dict[str, Any] = {
+    "hosts": literal_column("hosts"),
+    "products": literal_column("product_count"),
+    "versions": literal_column("version_count"),
+    "name": AssetSoftware.vendor,
+}
+
+
+@router.get("/vendors", response_model=Page[SoftwareVendor])
+def list_vendors(
+    user: Reader,
+    db: DB,
+    filters: SoftwareQuery,
+    sort: str = "-hosts",
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=500)] = 50,
+) -> Page[SoftwareVendor]:
+    """Software grouped by vendor (Oracle, Microsoft, ...), with its products. '' is "unknown vendor"."""
+    stmt = _filtered(
+        base_query(
+            user,
+            AssetSoftware.vendor,
+            func.count(func.distinct(AssetSoftware.asset_id)).label("hosts"),
+            func.count(func.distinct(AssetSoftware.product)).label("product_count"),
+            func.count(func.distinct(tuple_(AssetSoftware.product, AssetSoftware.version))).label(
+                "version_count"
+            ),
+        ),
+        filters,
+    ).group_by(AssetSoftware.vendor)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    col = VENDOR_SORTS.get(sort.lstrip("-"), VENDOR_SORTS["hosts"])
+    order = col.desc() if sort.startswith("-") else col.asc()
+    # Unknown vendor always last: it is a catch-all, not a vendor
+    vendors = db.execute(
+        stmt.order_by(AssetSoftware.vendor == "", order, AssetSoftware.vendor)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+
+    products: dict[str, list[VendorProduct]] = {}
+    if vendors:
+        rows = db.execute(
+            _filtered(
+                base_query(
+                    user,
+                    *KEY,
+                    _display_name().label("name"),
+                    func.count(func.distinct(AssetSoftware.asset_id)).label("hosts"),
+                ),
+                filters,
+            )
+            .where(AssetSoftware.vendor.in_([v.vendor for v in vendors]))
+            .group_by(*KEY)
+            .order_by(literal_column("hosts").desc(), literal_column("name"))
+        )
+        for r in rows:
+            bucket = products.setdefault(r.vendor, [])
+            if len(bucket) < MAX_PRODUCTS_PER_VENDOR:
+                bucket.append(VendorProduct(product=r.product, name=r.name, hosts=r.hosts))
+
+    return Page(
+        items=[
+            SoftwareVendor(
+                vendor=v.vendor,
+                label=vendor_label(v.vendor),
+                hosts=v.hosts,
+                product_count=v.product_count,
+                version_count=v.version_count,
+                products=products.get(v.vendor, []),
+            )
+            for v in vendors
         ],
         total=total,
         page=page,

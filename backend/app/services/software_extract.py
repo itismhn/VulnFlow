@@ -8,7 +8,7 @@ versions, uncredentialed scans only what a service discloses.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from urllib.parse import unquote
 
 OS = "os"
@@ -69,6 +69,203 @@ def version_key(version: str) -> str:
         else:
             out.append("!" + part[:16])
     return "".join(out)
+
+
+# --- Product identity --------------------------------------------------------
+# Plugins without a CPE report software by display name only, often with the
+# version and architecture baked in ("7-Zip 19.00 (x64)", "Java 8 Update 361").
+# Cleaning those names and mapping them to a CPE-style vendor and product makes
+# every version of one product land in one group, under its vendor.
+
+# Leading name words -> CPE vendor id. Longest match wins.
+_VENDOR_PREFIXES = {
+    "7-zip": "7-zip",
+    "adobe": "adobe",
+    "amazon": "amazon",
+    "anydesk": "anydesk",
+    "apache": "apache",
+    "atlassian": "atlassian",
+    "broadcom": "broadcom",
+    "centos": "centos",
+    "check point": "checkpoint",
+    "cisco": "cisco",
+    "citrix": "citrix",
+    "debian": "debian",
+    "dell": "dell",
+    "elastic": "elastic",
+    "eset": "eset",
+    "f5": "f5",
+    "fortinet": "fortinet",
+    "git": "git-scm",
+    "google": "google",
+    "hp": "hp",
+    "hewlett packard enterprise": "hpe",
+    "ibm": "ibm",
+    "intel": "intel",
+    "jetbrains": "jetbrains",
+    "kaspersky": "kaspersky",
+    "mariadb": "mariadb",
+    "mcafee": "mcafee",
+    "microsoft": "microsoft",
+    "mongodb": "mongodb",
+    "mozilla": "mozilla",
+    "mysql": "oracle",
+    "notepad++": "notepad-plus-plus",
+    "nvidia": "nvidia",
+    "openvpn": "openvpn",
+    "oracle": "oracle",
+    "palo alto networks": "paloaltonetworks",
+    "postgresql": "postgresql",
+    "putty": "putty",
+    "python": "python",
+    "red hat": "redhat",
+    "sap": "sap",
+    "suse": "suse",
+    "symantec": "symantec",
+    "teamviewer": "teamviewer",
+    "trend micro": "trendmicro",
+    "veeam": "veeam",
+    "veritas": "veritas",
+    "vmware": "vmware",
+    "winrar": "rarlab",
+    "wireshark": "wireshark",
+    "zoom": "zoom",
+}
+_VENDOR_PREFIX_ORDER = sorted(_VENDOR_PREFIXES, key=len, reverse=True)
+
+# Cleaned, lowercased names whose CPE product differs from the name
+_NAME_ALIASES: dict[str, tuple[str, str]] = {
+    "oracle database": ("oracle", "database_server"),
+    "oracle database server": ("oracle", "database_server"),
+    "java": ("oracle", "jre"),
+    "oracle java": ("oracle", "jre"),
+    "java se runtime environment": ("oracle", "jre"),
+    "java se development kit": ("oracle", "jdk"),
+    "mysql": ("oracle", "mysql"),
+    "mysql server": ("oracle", "mysql"),
+    "ubuntu": ("canonical", "ubuntu_linux"),
+    "microsoft iis": ("microsoft", "internet_information_services"),
+    "openssl": ("openssl", "openssl"),
+    "openssh": ("openbsd", "openssh"),
+}
+
+# Linux package names that are the same product as a CPE detection. The package
+# keeps its own name; only its vendor and product join it to that group.
+_PACKAGE_ALIASES: list[tuple[re.Pattern[str], tuple[str, str]]] = [
+    (re.compile(r"openssl"), ("openssl", "openssl")),
+    (re.compile(r"openssh(?:-server|-client|-clients)?"), ("openbsd", "openssh")),
+    (
+        re.compile(r"(?:java-[\d.]+-|java-)?openjdk(?:-\d+)?(?:-jre|-jdk)?(?:-headless)?"),
+        ("oracle", "openjdk"),
+    ),
+    (re.compile(r"mysql-server(?:-[\d.]+)?"), ("oracle", "mysql")),
+]
+
+VENDOR_LABELS = {
+    "7-zip": "7-Zip",
+    "apache": "Apache",
+    "canonical": "Canonical",
+    "checkpoint": "Check Point",
+    "f5": "F5",
+    "git-scm": "Git",
+    "hp": "HP",
+    "hpe": "HPE",
+    "ibm": "IBM",
+    "mariadb": "MariaDB",
+    "mongodb": "MongoDB",
+    "notepad-plus-plus": "Notepad++",
+    "nvidia": "NVIDIA",
+    "openbsd": "OpenBSD",
+    "openssl": "OpenSSL",
+    "openvpn": "OpenVPN",
+    "paloaltonetworks": "Palo Alto Networks",
+    "postgresql": "PostgreSQL",
+    "putty": "PuTTY",
+    "rarlab": "RARLAB",
+    "redhat": "Red Hat",
+    "sap": "SAP",
+    "suse": "SUSE",
+    "teamviewer": "TeamViewer",
+    "trendmicro": "Trend Micro",
+    "vmware": "VMware",
+}
+
+_ARCH_PAREN = re.compile(r"\s*\([^)]*\b(?:x64|x86|64-bit|32-bit|amd64|x86_64|arm64)\b[^)]*\)", re.I)
+_ARCH_WORDS = {"x64", "x86", "64-bit", "32-bit", "amd64", "x86_64", "arm64"}
+_COUNTER_WORDS = {"update", "build", "sp", "version", "release", "rev"}
+
+
+def vendor_label(vendor: str) -> str:
+    return VENDOR_LABELS.get(vendor) or (_humanize(vendor) if vendor else "")
+
+
+def clean_software_name(name: str, version: str = "") -> str:
+    """'Java 8 Update 361 (64-bit)' -> 'Java'; '7-Zip 19.00 (x64)' -> '7-Zip'.
+
+    Drops dotted versions, years, the version's own major number, "Update N" style
+    counters, and architecture tags, so every version shares one name.
+    """
+    major = m.group(0) if (m := re.match(r"\d+", version)) else ""
+    tokens = _ARCH_PAREN.sub("", name).split()
+    kept: list[str] = []
+    skip = False
+    for i, tok in enumerate(tokens):
+        low = tok.lower().strip(",;")
+        if skip:
+            skip = False
+            if re.fullmatch(r"\d[\w.]*", low):
+                continue
+        nxt = tokens[i + 1] if i + 1 < len(tokens) else ""
+        if low in _COUNTER_WORDS and re.fullmatch(r"\d[\w.]*", nxt):
+            skip = True
+            continue
+        if (
+            low in _ARCH_WORDS
+            or re.fullmatch(r"v?\d+(?:[._-]\d+)+[a-z0-9]*", low)  # 19.00, 2015-2022, 1.8.0_351
+            or re.fullmatch(r"(?:19|20)\d\d", low)  # 2015, 2019
+            or re.fullmatch(r"sp\d+|r\d", low)
+            or (major and re.fullmatch(rf"v?{major}[a-z]{{0,2}}\d*", low))  # 8, 19c
+        ):
+            continue
+        kept.append(tok)
+    cleaned = re.sub(r"[\s\-\u2013,:]+$", "", " ".join(kept)).strip()
+    return cleaned or name.strip()
+
+
+def _snake(text: str) -> str:
+    return re.sub(r"[^\w.+\-]+", "_", text.lower()).strip("_")
+
+
+def identify(name: str) -> tuple[str, str]:
+    """(vendor, product) for a cleaned display name; ('', '') when the vendor is unknown."""
+    low = name.lower().strip()
+    if low in _NAME_ALIASES:
+        return _NAME_ALIASES[low]
+    for prefix in _VENDOR_PREFIX_ORDER:
+        if low == prefix or (low.startswith(prefix) and low[len(prefix)] in " -_/"):
+            rest = low[len(prefix) :].strip(" -_/")
+            vendor = _VENDOR_PREFIXES[prefix]
+            alias = _NAME_ALIASES.get(f"{prefix} {rest}")
+            if alias:
+                return alias
+            return vendor, _snake(rest or prefix)
+    return "", ""
+
+
+def normalize(sw: Software) -> Software:
+    """Fill in vendor and product for software a plugin named without a CPE."""
+    if sw.vendor and sw.product:
+        return sw
+    if sw.category == PACKAGE:
+        for pattern, (vendor, product) in _PACKAGE_ALIASES:
+            if pattern.fullmatch(sw.name.lower()):
+                return replace(sw, vendor=vendor, product=product)
+        return sw
+    name = clean_software_name(sw.name, sw.version) if not sw.product else sw.name
+    vendor, product = identify(name)
+    if sw.vendor and vendor and vendor != sw.vendor:
+        product = ""  # the name names another vendor's product; trust the CPE vendor
+    return replace(sw, name=name[:255], vendor=sw.vendor or vendor, product=sw.product or product[:255])
 
 
 # --- CPE -------------------------------------------------------------------
@@ -138,8 +335,10 @@ def _from_packages(output: str) -> list[Software]:
     for line in output.splitlines():
         if m := _DPKG_RE.match(line):
             name, version = m.group(1).split(":")[0], m.group(2)
-        elif m := _RPM_RE.match(line):
-            name, version = m.group(1), f"{m.group(2)}-{m.group(3)}"
+        elif _RPM_RE.match(line):
+            # name-version-release: the name may itself contain digits and dashes
+            name, ver, rel = line.strip().split("|")[0].rsplit("-", 2)
+            version = f"{ver}-{rel}"
             # Drop a trailing architecture: 34.el7.x86_64 -> 34.el7
             version = re.sub(r"\.(x86_64|i[3-6]86|noarch|aarch64|ppc64le|s390x)$", "", version)
         else:
@@ -294,7 +493,7 @@ def extract(
         found = _from_oracle_tns(output)
     else:
         found = _from_version_blocks(output, plugin_name, plugin_cpe, SERVICE if port else APPLICATION)
-    return found[:MAX_ITEMS_PER_OUTPUT]
+    return [normalize(sw) for sw in found[:MAX_ITEMS_PER_OUTPUT]]
 
 
 def split_os(os_name: str) -> tuple[str, str]:

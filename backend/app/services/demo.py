@@ -508,10 +508,17 @@ def write_nessus(
     report_name: str = "Monthly Internal Scan",
     policy_name: str = "Advanced Network Scan",
     credentialed: bool = True,
+    disabled_families: tuple[str, ...] = (),
 ) -> Path:
     root = etree.Element("NessusClientData_v2")
     policy = etree.SubElement(root, "Policy")
     etree.SubElement(policy, "policyName").text = policy_name
+    if disabled_families:
+        selection = etree.SubElement(policy, "FamilySelection")
+        for family in disabled_families:
+            fam = etree.SubElement(selection, "FamilyItem")
+            etree.SubElement(fam, "FamilyName").text = family
+            etree.SubElement(fam, "Status").text = "disabled"
     report = etree.SubElement(root, "Report", name=report_name)
 
     for idx, h in enumerate(hosts):

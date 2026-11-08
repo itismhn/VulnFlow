@@ -4,7 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from app.services.software_extract import clean_plugin_name, extract, parse_cpe, split_os, version_key
+from app.services.software_extract import (
+    clean_plugin_name,
+    clean_software_name,
+    extract,
+    identify,
+    parse_cpe,
+    split_os,
+    version_key,
+)
 from tests.conftest import ApiClient
 from tests.test_api_flow import loaded  # noqa: F401  (fixture)
 
@@ -45,11 +53,42 @@ def test_package_enumerations() -> None:
     }
     win = "  Microsoft Visual C++ 2015 x64 Runtime - 14.0.23026  [version 14.0.23026]  [installed on 2020/01/01]"
     [sw] = extract(20811, "", "Windows", "", win)
-    assert (sw.name, sw.version, sw.category) == (
-        "Microsoft Visual C++ 2015 x64 Runtime",
+    assert (sw.name, sw.version, sw.category, sw.vendor) == (
+        "Microsoft Visual C++ Runtime",
         "14.0.23026",
         "application",
+        "microsoft",
     )
+
+
+def test_every_version_of_a_product_shares_one_identity() -> None:
+    win = (
+        "  7-Zip 16.04 (x64)  [version 16.04]\n"
+        "  7-Zip 23.01 (x64)  [version 23.01]\n"
+        "  Java 8 Update 361 (64-bit)  [version 8.0.3610.9]\n"
+        "  Oracle Database 19c  [version 19.3.0.0.0]\n"
+        "  Microsoft SQL Server 2019 (64-bit)  [version 15.0.2000.5]\n"
+        "  Microsoft 365 Apps for enterprise  [version 16.0.17029.20108]\n"
+        "  Some Inhouse Tool 2.1  [version 2.1]"
+    )
+    found = {(s.name, s.version): (s.vendor, s.product) for s in extract(20811, "", "Windows", "", win)}
+    assert found[("7-Zip", "16.04")] == found[("7-Zip", "23.01")] == ("7-zip", "7-zip")
+    assert found[("Java", "8.0.3610.9")] == ("oracle", "jre")
+    # Same identity as the CPE plugin's cpe:/a:oracle:database_server
+    assert found[("Oracle Database", "19.3.0.0.0")] == ("oracle", "database_server")
+    assert found[("Microsoft SQL Server", "15.0.2000.5")] == ("microsoft", "sql_server")
+    assert found[("Microsoft 365 Apps for enterprise", "16.0.17029.20108")][0] == "microsoft"
+    # Unknown vendor: still grouped by its cleaned name across versions
+    assert found[("Some Inhouse Tool", "2.1")] == ("", "")
+
+    rpm = "packages :\n\n  java-1.8.0-openjdk-1.8.0.392-1.el8.x86_64|(none)"
+    [pkg] = extract(22869, "", "General", "", rpm)
+    assert (pkg.name, pkg.vendor, pkg.product) == ("java-1.8.0-openjdk", "oracle", "openjdk")
+    assert clean_software_name("Microsoft Visual C++ 2015-2022 Redistributable (x64)") == (
+        "Microsoft Visual C++ Redistributable"
+    )
+    assert identify("Oracle Linux") == ("oracle", "linux")
+    assert identify("Red Hat Enterprise Linux") == ("redhat", "enterprise_linux")
 
 
 def test_banners_and_detection_blocks() -> None:
@@ -113,6 +152,21 @@ def test_software_inventory_api(loaded: ApiClient, tmp_path: Path) -> None:  # n
     csv_body = loaded.get("/api/v1/software/export", params={"q": "openssh"}).text
     assert csv_body.startswith("IP,Hostname,Network") and "openssh" in csv_body.lower()
     assert loaded.get("/api/v1/software/instances", params={"ip": "nope"}).status_code == 422
+
+    # Vendor view: Oracle collects its database, Java and OS under one entry
+    vendors = loaded.get("/api/v1/software/vendors", params={"page_size": 500}).json()["items"]
+    by_vendor = {v["vendor"]: v for v in vendors}
+    oracle = by_vendor["oracle"]
+    assert oracle["label"] == "Oracle" and oracle["product_count"] >= 2
+    assert "database_server" in {p["product"] for p in oracle["products"]}
+    assert vendors[-1]["vendor"] == "" or "" not in by_vendor  # unknown vendor sorts last
+    db_group = loaded.get(
+        "/api/v1/software", params={"vendor": "oracle", "product": "database_server"}
+    ).json()
+    [group] = db_group["items"]
+    assert group["name"] == "Oracle Database" and group["version_count"] >= 2
+    # "Oracle Database 19c" from the Windows list no longer forms its own product
+    assert not loaded.get("/api/v1/software", params={"q": "19c"}).json()["items"]
 
     # Rebuilding from stored findings gives the same inventory
     before = loaded.get("/api/v1/software/stats").json()

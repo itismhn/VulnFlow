@@ -12,6 +12,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - Versions are read from the CPE plugin, SSH package lists (dpkg and rpm), Windows installed software, HTTP and SSH banners, the Oracle TNS listener, and the `Version :` blocks of detection plugins. The same install reported by several plugins is merged per host.
 - A *Software* section on each asset page.
 - The inventory is rebuilt after every import and scan deletion. Existing deployments build it once from stored findings during the upgrade, and admins can rebuild it from the page or with `python -m app.cli rebuild-software`.
+- **By vendor** view, now the default on the *Software* page: Oracle, Microsoft, Apache, and so on, each with its products. Expand a vendor to see every version of each product and how many hosts run it.
+- Software reported by name only (Windows installed software, detection plugins without a CPE) is matched to its vendor and product, and versions and architectures are taken out of the name. For example, `7-Zip 16.04 (x64)` and `7-Zip 23.01 (x64)` are one product with two versions, `Oracle Database 19c` joins *Oracle Database*, and `Java 8 Update 361` joins *Java* under Oracle. Linux packages such as `openssl`, `openssh-server`, and `java-*-openjdk` join their product too. After upgrading, click *Rebuild* on the *Software* page (or run `python -m app.cli rebuild-software`) to regroup existing data.
 - Demo data includes software stacks, such as Oracle Database, Log4j, OpenSSH, and Apache, whose versions change between scans.
 
 ### Security
@@ -25,6 +27,9 @@ All notable changes to this project are documented here. The format follows [Kee
 - Spreadsheet exports also neutralize cells starting with a tab or carriage return.
 
 ### Fixed
+- When a scan's policy disables a plugin family, that scan no longer auto-fixes findings from the family on its first import. Before, the policy was read only after auto-fix ran.
+- Out-of-order imports: a finding that only an older scan detected is now closed when a newer scan of that host, already imported, did not see it. An older scan imported late also no longer reopens a finding that a newer scan had fixed.
+- RPM packages whose names contain version numbers (for example `java-1.8.0-openjdk`) keep their full name instead of being cut short.
 - Findings, assets, scans, and vulnerabilities that don't exist or are outside the user's scope show a "not found" message instead of loading forever.
 - Admin pages and My work show an access-denied message to users without permission, instead of an empty page.
 - A missing Pango library now always produces a clear PDF error, including when it fails during rendering.

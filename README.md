@@ -33,7 +33,9 @@ VulnFlow turns a pile of scan exports into a managed, auditable vulnerability ba
 - Missing from a newer scan of that host → **auto-fixed**, with two safeguards against false closures:
   - an uncredentialed scan never closes findings from a credentialed one;
   - plugin families disabled in the scan policy are never closed.
-- Out-of-order imports of older scans are handled correctly.
+- Only hosts a scan actually covered are compared, so a full `/16` sweep one month and a single-subnet scan the next can be mixed freely: hosts outside the smaller scan keep their findings as they are.
+- Out-of-order imports of older scans are handled correctly: they never reopen what a newer scan fixed, and findings only an older scan saw are closed by the newer one.
+- Nothing is deleted when it is fixed. Every finding keeps its status timeline and the list of scans that detected it.
 - Manual statuses: in progress, risk accepted (through approval), false positive. Imports never touch them.
 
 **Explore & manage**
@@ -42,7 +44,7 @@ VulnFlow turns a pile of scan exports into a managed, auditable vulnerability ba
 - Bulk assign, status change, due dates, and comments. Every change lands on the finding's timeline.
 - Asset inventory with a risk score (severity-weighted, scaled by business criticality), scan timeline, and tags.
 - Vulnerability view: where a given CVE or plugin exists across the estate.
-- **Software inventory**: every OS, application, package, and service version Nessus found, grouped by product. Search for a product and a version range (for example `log4j` and `<2.17.1`) to list the hosts a new CVE affects, then export them.
+- **Software inventory**: every OS, application, package, and service version Nessus found, grouped by vendor and product (for example *Oracle* → Database, Java, Linux, each with every version found). Search for a product and a version range (for example `log4j` and `<2.17.1`) to list the hosts a new CVE affects, then export them.
 - `⌘K` search across IPs, hostnames, CVEs, plugin IDs, and scans.
 
 **Remediation workflow**
