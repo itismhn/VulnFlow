@@ -317,7 +317,8 @@ def _process_batch(
                     "note": "First detected",
                 }
             )
-        stats.new += len(new_rows)
+        # Informational plugins are not vulnerabilities; keep "new" on the same basis as finding_count
+        stats.new += sum(1 for r in new_rows if r["severity"] > 0)
 
     if updates:
         # Group by key-set: bulk UPDATE requires homogeneous parameter dicts

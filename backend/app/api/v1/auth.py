@@ -13,6 +13,7 @@ from app.core.permissions import ROLE_PERMISSIONS
 from app.core.security import (
     ACCESS_COOKIE,
     CSRF_COOKIE,
+    CSRF_HEADER,
     REFRESH_COOKIE,
     create_token,
     decode_token,
@@ -171,6 +172,9 @@ def logout(request: Request, response: Response, db: DB) -> None:
     token = request.cookies.get(REFRESH_COOKIE)
     payload = decode_token(token, "refresh") if token else None
     if payload:
+        csrf = request.cookies.get(CSRF_COOKIE)
+        if not csrf or csrf != request.headers.get(CSRF_HEADER):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "CSRF token missing or invalid")
         stored = db.get(RefreshToken, uuid.UUID(payload["jti"]))
         if stored:
             # Ends the whole sign-in, so access tokens issued for it stop working too

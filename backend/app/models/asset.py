@@ -9,6 +9,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, CIDR, INET
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,6 +30,7 @@ class Network(Timestamps, Base):
 
     __tablename__ = "networks"
     __table_args__ = (
+        Index("uq_networks_name_lower", text("lower(name)"), unique=True),
         Index("ix_networks_cidr_gist", "cidr", postgresql_using="gist", postgresql_ops={"cidr": "inet_ops"}),
     )
 

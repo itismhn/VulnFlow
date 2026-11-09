@@ -196,6 +196,15 @@ function UserDialog({ initial, onClose }: { initial: Partial<User>; onClose: () 
     network_ids: initial.networks?.map((n) => n.id) ?? [],
     password: isNew ? generatePassword() : "",
   });
+  const [errors, setErrors] = useState<{ username?: string; email?: string }>({});
+  const validate = () => {
+    const e: { username?: string; email?: string } = {};
+    if (isNew && !/^[a-zA-Z0-9._-]{3,64}$/.test(form.username))
+      e.username = "3-64 characters: letters, digits, dot, dash, underscore";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Enter a valid email address";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
   const save = useMutation({
     mutationFn: () => {
       const { username, password, ...rest } = form;
@@ -221,7 +230,7 @@ function UserDialog({ initial, onClose }: { initial: Partial<User>; onClose: () 
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>
+          <Button variant="primary" loading={save.isPending} onClick={() => validate() && save.mutate()}>
             {isNew ? "Create user" : "Save changes"}
           </Button>
         </>
@@ -229,7 +238,7 @@ function UserDialog({ initial, onClose }: { initial: Partial<User>; onClose: () 
     >
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Username">
+          <Field label="Username" error={errors.username}>
             <Input
               value={form.username}
               disabled={!isNew}
@@ -239,7 +248,7 @@ function UserDialog({ initial, onClose }: { initial: Partial<User>; onClose: () 
           <Field label="Full name">
             <Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
           </Field>
-          <Field label="Email" className="sm:col-span-2">
+          <Field label="Email" className="sm:col-span-2" error={errors.email}>
             <Input
               type="email"
               value={form.email}
