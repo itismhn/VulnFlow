@@ -112,6 +112,23 @@ def get_network(network_id: int, user: Reader, db: DB) -> Network:
     return net
 
 
+def _unscoped(user: User) -> None:
+    # Ranges decide which assets every scoped user sees, so a scoped user cannot add or import them
+    if user.scope_restricted:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Network changes affect all users' scope")
+
+
+def _name_taken(db: DB, name: str, exclude_id: int | None = None) -> bool:
+    stmt = select(Network.id).where(func.lower(Network.name) == name.strip().lower())
+    if exclude_id is not None:
+        stmt = stmt.where(Network.id != exclude_id)
+    return db.scalar(stmt) is not None
+
+
+def _name_conflict() -> HTTPException:
+    return HTTPException(status.HTTP_409_CONFLICT, "A network with this name already exists")
+
+
 def _commit_or_conflict(db: DB) -> None:
     try:
         db.commit()
@@ -122,6 +139,9 @@ def _commit_or_conflict(db: DB) -> None:
 
 @router.post("", response_model=NetworkOut, status_code=201)
 def create_network(body: NetworkCreate, request: Request, user: Manager, db: DB) -> Network:
+    _unscoped(user)
+    if _name_taken(db, body.name):
+        raise _name_conflict()
     net = Network(**body.model_dump())
     db.add(net)
     try:
@@ -146,10 +166,12 @@ def create_network(body: NetworkCreate, request: Request, user: Manager, db: DB)
 
 @router.patch("/{network_id}", response_model=NetworkOut)
 def update_network(network_id: int, body: NetworkUpdate, request: Request, user: Manager, db: DB) -> Network:
-    net = db.get(Network, network_id)
-    if net is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Network not found")
+    net = get_network(network_id, user, db)
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
+    if user.scope_restricted and changes.keys() & {"cidr"}:
+        _unscoped(user)  # moving a range could pull in assets outside the user's scope
+    if "name" in changes and _name_taken(db, changes["name"], net.id):
+        raise _name_conflict()
     for key, value in changes.items():
         setattr(net, key, value)
     try:
@@ -176,9 +198,7 @@ def update_network(network_id: int, body: NetworkUpdate, request: Request, user:
 
 @router.delete("/{network_id}", status_code=204)
 def delete_network(network_id: int, request: Request, user: Manager, db: DB) -> None:
-    net = db.get(Network, network_id)
-    if net is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Network not found")
+    net = get_network(network_id, user, db)
     audit(
         db,
         "network.deleted",
@@ -198,6 +218,7 @@ def delete_network(network_id: int, request: Request, user: Manager, db: DB) -> 
 @router.post("/import", response_model=NetworkImportResult)
 async def import_networks(file: UploadFile, request: Request, user: Manager, db: DB) -> NetworkImportResult:
     """CSV with header: name,cidr,zone,criticality,owner,description (upserts on cidr)."""
+    _unscoped(user)
     raw = (await file.read(5 * 1024 * 1024)).decode("utf-8-sig", errors="replace")
     reader = csv.DictReader(io.StringIO(raw))
     created = updated = 0
@@ -212,6 +233,9 @@ async def import_networks(file: UploadFile, request: Request, user: Manager, db:
             errors.append(f"Line {line}: {exc.errors()[0]['msg']}")
             continue
         existing = db.scalar(select(Network).where(Network.cidr == data.cidr))
+        if _name_taken(db, data.name, existing.id if existing else None):
+            errors.append(f"Line {line}: a network named '{data.name}' already exists")
+            continue
         if existing:
             for key, value in data.model_dump().items():
                 setattr(existing, key, value)

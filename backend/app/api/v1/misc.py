@@ -144,7 +144,23 @@ def export_audit(
     until: datetime | None = None,
 ) -> StreamingResponse:
     conds = _audit_conds(action, actor, entity_type, since, until)
-    audit(db, "audit.exported", request=request, user=user, details={"action": action, "actor": actor})
+    audit(
+        db,
+        "audit.exported",
+        request=request,
+        user=user,
+        details={
+            k: v
+            for k, v in {
+                "action": action,
+                "actor": actor,
+                "entity_type": entity_type,
+                "since": since.isoformat() if since else None,
+                "until": until.isoformat() if until else None,
+            }.items()
+            if v
+        },
+    )
     db.commit()
 
     def stream() -> Iterator[str]:

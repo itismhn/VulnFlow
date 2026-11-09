@@ -72,7 +72,7 @@ export function DashboardPage() {
       <div className="space-y-4">
         <Skeleton className="h-10 w-72" />
         <Skeleton className="h-32" />
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-3 [&>*]:min-w-0">
           <Skeleton className="h-72 lg:col-span-2" />
           <Skeleton className="h-72" />
         </div>
@@ -198,7 +198,7 @@ export function DashboardPage() {
         </div>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3 [&>*]:min-w-0">
         <Card className="lg:col-span-2">
           <CardHeader
             title="Open findings over time"
