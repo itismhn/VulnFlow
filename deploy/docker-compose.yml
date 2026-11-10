@@ -17,6 +17,8 @@ x-backend: &backend
   restart: unless-stopped
   volumes:
     - storage:/data
+    # Backup archives. To keep them off this disk, use a bind mount instead, e.g. /mnt/nas/vulnflow:/backups
+    - backups:/backups
   depends_on:
     db:
       condition: service_healthy
@@ -97,3 +99,5 @@ volumes:
     name: report-manager_redisdata
   storage:
     name: report-manager_storage
+  backups:
+    name: vulnflow_backups

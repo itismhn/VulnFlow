@@ -17,5 +17,7 @@ celery.conf.update(
         "daily-maintenance": {"task": "maintenance.daily", "schedule": crontab(minute=5, hour=0)},
         # Catch acceptances that expired while the worker was down
         "hourly-risk-expiry": {"task": "maintenance.expire_risk", "schedule": crontab(minute=17)},
+        # Runs every night; the backup_schedule setting decides whether a backup is due
+        "nightly-backup": {"task": "backup.scheduled", "schedule": crontab(minute=30, hour=1)},
     },
 )

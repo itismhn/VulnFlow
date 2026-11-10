@@ -72,6 +72,11 @@ VulnFlow turns a pile of scan exports into a managed, auditable vulnerability ba
 - **Network scoping**: restrict a user to specific ranges. Every query, export, and report respects it.
 - Append-only **audit log** covering sign-ins, failed logins, imports, status changes, exports, downloads, and admin actions, with CSV export and a retention setting.
 
+**Backup & restore**
+- One archive holds everything: the database, uploaded `.nessus` files, and generated reports.
+- **Back up now** under *Settings*, or automatic daily or weekly backups that keep the last *N*. Download any archive from the same page.
+- Restore with one command. Backups from older versions are migrated on restore. See [Backup and restore](#backup-and-restore).
+
 | Findings by network | Finding detail (dark mode) |
 |---|---|
 | ![Findings](docs/screenshots/findings-by-network.jpg) | ![Detail](docs/screenshots/finding-detail-dark.jpg) |
@@ -117,7 +122,8 @@ Day-to-day Docker commands:
 | `make docker-down` | Stop the stack. Data volumes are kept |
 | `make docker-ps` | Container status and health |
 | `make docker-logs` | Follow logs from all containers |
-| `make docker-backup` | Dump the database to `backups/` |
+| `make docker-backup` | Full backup (database, scans, reports), with a copy in `backups/` |
+| `make docker-restore FILE=backups/….tar.gz` | Replace all data with a backup. See [Backup and restore](#backup-and-restore) |
 
 Without `make`, use Compose directly. Always pass `--env-file .env`, or Compose cannot resolve `POSTGRES_PASSWORD`:
 
@@ -125,7 +131,7 @@ Without `make`, use Compose directly. Always pass `--env-file .env`, or Compose 
 docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
 ```
 
-Data lives in the named volumes `pgdata` (database), `storage` (uploaded scans and generated reports), and `redisdata`. `docker compose down -v` **deletes them**.
+Data lives in the named volumes `pgdata` (database), `storage` (uploaded scans and generated reports), `backups` (backup archives), and `redisdata`. `docker compose down -v` **deletes them**, backups included.
 
 #### Docker on Windows
 
@@ -160,14 +166,15 @@ Open <http://localhost:8080> and sign in with the [default admin](#default-admin
 | `make docker-admin` | `vf exec api python -m app.cli create-admin` |
 | `make docker-demo` | `vf exec api python -m app.cli seed-demo` |
 
-To back up the database, let `pg_dump` write the file inside the container and copy it out. Redirecting with `>` in PowerShell can corrupt the binary dump:
+To make a backup and copy it out (same as `make docker-backup`):
 
 ```powershell
 New-Item -ItemType Directory -Force backups | Out-Null
-$name = "vulnflow-$(Get-Date -Format yyyyMMdd-HHmmss).dump"
-vf exec -T db pg_dump -U report_manager -Fc -f /tmp/$name report_manager
-vf cp db:/tmp/$name backups/$name
+$name = vf exec -T api python -m app.cli backup --print-name
+vf cp api:/backups/$name backups/$name
 ```
+
+For restoring, see [Backup and restore](#backup-and-restore).
 
 The repository's `.gitattributes` keeps LF line endings even when Git's `core.autocrlf` is on. If you cloned an older copy that has CRLF endings, clone it again. If you prefer `make`, the Makefile also works from Git Bash or WSL with `make` installed.
 
@@ -230,7 +237,7 @@ The UI runs at <http://localhost:5173> and the API docs at <http://localhost:800
 3. **Work the findings** (*Findings*, *Vulnerabilities*, *Assets*, *Software*): filter by severity, network, status, or CVE. Assign owners, set due dates, comment, accept risks, or mark false positives. Assignees see their queue under *My work*; risk acceptances wait in *Risk approvals*.
    To check a new CVE against your estate, open *Software*, search for the product, and enter the affected range in the version box, e.g. `<2.17.1` or `>=19.3 <19.21`. *By host* lists every matching host with the port or path where the software was found. Credentialed scans give the most complete inventory, because uncredentialed scans only see what network services announce.
 4. **Report** (*Reports*): pick a template, scope, and format (PDF, XLSX, CSV, HTML).
-5. **Administer** (*Users*, *Settings*, *Audit log*): create users with the Admin, Analyst, or Viewer role and restrict them to networks, set SLA policies and branding, and review the audit log.
+5. **Administer** (*Users*, *Settings*, *Audit log*): create users with the Admin, Analyst, or Viewer role and restrict them to networks, set SLA policies, branding, and automatic backups, and review the audit log.
 
 Press `⌘K` / `Ctrl+K` anywhere to search IPs, hostnames, CVEs, plugins, and scans.
 
@@ -251,6 +258,9 @@ Run these inside `backend/` with `.venv/bin/python -m app.cli …`, or in Docker
 | `seed-demo [--months 4] [--hosts-per-network 12]` | Load demo networks and synthetic scans into the database |
 | `demo-files [--out demo-data]` | Write synthetic `.nessus` files to try the upload flow |
 | `rebuild-software [--if-empty]` | Rebuild the software inventory from findings already in the database |
+| `backup [--print-name]` | Write a full backup to the backup folder |
+| `list-backups` | List the backups in the backup folder |
+| `restore FILE [--yes] [--force]` | Replace **all** data with a backup. `FILE` is a path or the name of an archive in the backup folder |
 | `--help` | Show all commands and options |
 
 ### Configuration
@@ -264,7 +274,46 @@ All settings are environment variables with the `RM_` prefix. See [.env.example]
 | `RM_COOKIE_SECURE` | `false` | Set to `true` when served over HTTPS |
 | `RM_DATABASE_URL` / `RM_REDIS_URL` | localhost | Built automatically in Docker |
 | `RM_MAX_UPLOAD_MB` | `1024` | Keep `client_max_body_size` in nginx.conf in sync |
+| `RM_BACKUP_DIR` | `<storage>/backups` | Where backup archives go. `/backups` in Docker (the `vulnflow_backups` volume) |
+| `RM_PG_BIN_DIR` | (PATH) | Folder with `pg_dump` / `pg_restore` if they are not on `PATH`. Included in the Docker image |
 | `HTTP_PORT` | `8080` | Docker only: host port for the UI |
+
+### Backup and restore
+
+A backup is one `.tar.gz` file with the database, the uploaded `.nessus` files, and generated reports, plus a `manifest.json` describing what is inside. Make one in three ways:
+
+- **Settings → Backups → Back up now**. The same page lists, downloads, and deletes archives.
+- **On a schedule**: set *Automatic backups* to daily or weekly. They run at 01:30 UTC from the worker, and only the newest *Keep* of them are kept. Manual backups are never deleted automatically.
+- **From the command line**: `make docker-backup`, or `python -m app.cli backup`.
+
+Archives are written to `RM_BACKUP_DIR` (in Docker, the `vulnflow_backups` volume). **A backup on the same disk doesn't survive losing that disk.** Copy archives to another server, or replace the volume in `deploy/docker-compose.yml` with a bind mount to a network share, such as `- /mnt/nas/vulnflow:/backups`.
+
+Archives contain every finding and the users' password hashes, so store them like the database itself. The `.env` file is **not** included. Keep a copy of it with your backups: without the same `RM_SECRET_KEY` nothing breaks, but everyone has to sign in again.
+
+**Restore** replaces everything currently in VulnFlow with the backup's contents:
+
+```bash
+make docker-restore FILE=backups/vulnflow-20261110-013000-scheduled.tar.gz
+```
+
+This copies the file into the backups volume, stops the web, api, and worker containers, asks for confirmation, restores, and starts everything again. Without `make`, run the same steps by hand:
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file .env cp backups/FILE.tar.gz api:/backups/
+docker compose -f deploy/docker-compose.yml --env-file .env exec -T -u root api chown app /backups/FILE.tar.gz
+docker compose -f deploy/docker-compose.yml --env-file .env stop web api worker
+docker compose -f deploy/docker-compose.yml --env-file .env run --rm --no-deps api python -m app.cli restore FILE.tar.gz
+docker compose -f deploy/docker-compose.yml --env-file .env up -d
+```
+
+Without Docker, stop the API and worker, then run `.venv/bin/python -m app.cli restore /path/to/FILE.tar.gz` in `backend/`.
+
+Notes:
+- A backup from an older VulnFlow version is upgraded to the current schema during the restore. A backup from a **newer** version is refused: upgrade VulnFlow first.
+- The restore refuses to run while other database connections are open (the API or worker still running). `--force` overrides this.
+- All sessions are ended, so everyone signs in again afterwards. The restore is recorded in the audit log.
+- The archive is checked before anything is changed: unexpected entries, missing parts, or paths outside the storage folder stop the restore.
+- `pg_dump` must be the same major version as the PostgreSQL server or newer. The Docker image ships version 17, matching the bundled `postgres:17` database.
 
 ### Troubleshooting
 

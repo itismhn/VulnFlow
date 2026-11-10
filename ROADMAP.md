@@ -73,7 +73,9 @@ Have a suggestion? [Open a feature request](https://github.com/itismhn/VulnFlow/
 - 📋 Optional MFA (TOTP) for deployments that use local accounts
 - 📋 Additional parsers: OpenVAS / Greenbone, Qualys, Nmap XML (the parser interface already supports this)
 - 📋 Internationalisation with RTL layout support
-- 📋 Helm chart, backup/restore guide, high-availability notes
+- ✅ **Backup and restore**: full archives (database, scans, reports) from the UI, on a schedule, or from the CLI; one-command restore
+- 📋 Copy backups to S3-compatible storage or SFTP automatically
+- 📋 Helm chart, high-availability notes
 
 ## Ideas / backlog 💡
 

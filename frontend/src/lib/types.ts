@@ -445,6 +445,25 @@ export interface AppSettings {
   audit_retention_days: number;
   branding_company: string;
   branding_classification: string;
+  backup_schedule: "off" | "daily" | "weekly";
+  backup_keep: number;
+}
+
+export interface BackupItem {
+  name: string;
+  kind: "manual" | "scheduled";
+  size_bytes: number;
+  created_at: string;
+  version: string | null;
+  counts: Partial<Record<"users" | "scans" | "assets" | "findings" | "reports", number>>;
+  files: number | null;
+}
+
+export interface BackupList {
+  items: BackupItem[];
+  running_since: string | null;
+  last_run: { kind: string; ok: boolean; name: string; error: string; at: string } | null;
+  directory: string;
 }
 
 export interface SlaRow {

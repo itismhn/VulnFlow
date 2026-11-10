@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Plus, Trash2 } from "lucide-react";
+import { DatabaseBackup, Download, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
   Button,
@@ -14,10 +15,10 @@ import {
   Select,
 } from "@/components/ui/primitives";
 import { useAppSettings } from "@/features/workflow/risk-dialog";
-import { api } from "@/lib/api";
+import { api, downloadUrl } from "@/lib/api";
 import { useZones } from "@/lib/queries";
-import type { AppSettings, SlaPolicy, SuppressionRule } from "@/lib/types";
-import { cn, fmtDate } from "@/lib/utils";
+import type { AppSettings, BackupList, SlaPolicy, SuppressionRule } from "@/lib/types";
+import { cn, fmtBytes, fmtDate, fmtNum } from "@/lib/utils";
 
 const SEVS = [
   { key: "critical_days", label: "Critical", cls: "bg-critical" },
@@ -33,11 +34,12 @@ export function SettingsPage() {
     <div className="animate-in space-y-5">
       <PageHeader
         title="Settings"
-        description="Remediation deadlines, false-positive rules, risk acceptance, and retention."
+        description="Remediation deadlines, false-positive rules, risk acceptance, retention, and backups."
       />
       <SlaSection />
       <SuppressionSection />
       <GeneralSection />
+      <BackupSection />
     </div>
   );
 }
@@ -371,6 +373,193 @@ function GeneralSection() {
           />
         </Field>
       </div>
+    </Card>
+  );
+}
+
+function BackupSection() {
+  const qc = useQueryClient();
+  const { data: settings } = useAppSettings();
+  const { data } = useQuery({
+    queryKey: ["backups"],
+    queryFn: () => api.get<BackupList>("/backups"),
+    // Poll while a backup runs so the new archive shows up without a reload
+    refetchInterval: (q) => (q.state.data?.running_since ? 3000 : false),
+  });
+  const [schedule, setSchedule] = useState<{
+    backup_schedule: AppSettings["backup_schedule"];
+    backup_keep: number;
+  } | null>(null);
+  const [toDelete, setToDelete] = useState<string | null>(null);
+  useEffect(() => {
+    if (settings)
+      setSchedule({ backup_schedule: settings.backup_schedule, backup_keep: settings.backup_keep });
+  }, [settings]);
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["backups"] });
+  const start = useMutation({
+    mutationFn: () => api.post("/backups"),
+    onSuccess: () => {
+      toast.success("Backup started");
+      refresh();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: (name: string) => api.del(`/backups/${encodeURIComponent(name)}`),
+    onSuccess: () => {
+      toast.success("Backup deleted");
+      setToDelete(null);
+      refresh();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const saveSchedule = useMutation({
+    mutationFn: (body: Partial<AppSettings>) => api.put<AppSettings>("/settings", body),
+    onSuccess: (s) => {
+      qc.setQueryData(["settings"], s);
+      toast.success("Backup schedule saved");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const running = !!data?.running_since;
+  const last = data?.last_run;
+  const scheduleDirty =
+    !!schedule &&
+    !!settings &&
+    (schedule.backup_schedule !== settings.backup_schedule || schedule.backup_keep !== settings.backup_keep);
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader
+        title="Backups"
+        description="A full backup holds the database, uploaded scans and generated reports in one archive. Copy archives to another server: a backup on the same disk does not survive losing that disk."
+        actions={
+          <Button
+            variant="primary"
+            size="sm"
+            loading={running || start.isPending}
+            onClick={() => start.mutate()}
+          >
+            <DatabaseBackup className="size-3.5" /> {running ? "Backing up…" : "Back up now"}
+          </Button>
+        }
+      />
+      {schedule && (
+        <div className="flex flex-wrap items-end gap-4 border-b border-line px-4 py-4">
+          <Field label="Automatic backups" hint="Runs at 01:30 UTC.">
+            <div>
+              <Select
+                value={schedule.backup_schedule}
+                onChange={(e) =>
+                  setSchedule({
+                    ...schedule,
+                    backup_schedule: e.target.value as AppSettings["backup_schedule"],
+                  })
+                }
+                className="w-36"
+              >
+                <option value="off">Off</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </Select>
+            </div>
+          </Field>
+          <Field label="Keep" hint="Older automatic backups are deleted. Manual ones are kept.">
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={365}
+                value={schedule.backup_keep}
+                onChange={(e) => setSchedule({ ...schedule, backup_keep: Number(e.target.value) })}
+                className="w-24 font-mono"
+              />
+              <span className="text-sm text-ink-3">backups</span>
+            </div>
+          </Field>
+          <Button
+            size="sm"
+            disabled={!scheduleDirty}
+            loading={saveSchedule.isPending}
+            onClick={() => saveSchedule.mutate(schedule)}
+            className="mb-5"
+          >
+            Save schedule
+          </Button>
+        </div>
+      )}
+      {last && !last.ok && (
+        <p className="border-b border-line bg-critical/10 px-4 py-2 text-sm text-critical">
+          The last {last.kind} backup failed ({fmtDate(last.at, true)}): {last.error}
+        </p>
+      )}
+      {!data || data.items.length === 0 ? (
+        <p className="px-4 py-8 text-center text-sm text-ink-3">No backups yet.</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {data.items.map((b) => (
+            <li key={b.name} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{fmtDate(b.created_at, true)}</span>
+                  <Badge tone={b.kind === "manual" ? "brand" : "neutral"}>{b.kind}</Badge>
+                  {b.version && <Badge>v{b.version}</Badge>}
+                </div>
+                <div className="mt-0.5 truncate font-mono text-xs text-ink-3">
+                  {b.name} · {fmtBytes(b.size_bytes)} · {fmtNum(b.counts.scans)} scans ·{" "}
+                  {fmtNum(b.counts.findings)} findings · {fmtNum(b.counts.users)} users
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  window.location.assign(downloadUrl(`/backups/${encodeURIComponent(b.name)}/download`))
+                }
+              >
+                <Download className="size-3.5" /> Download
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Delete backup"
+                onClick={() => setToDelete(b.name)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="border-t border-line px-4 py-3 text-xs text-ink-3">
+        Stored in <span className="font-mono">{data?.directory}</span>. To restore, stop the api and worker
+        and run <span className="font-mono">python -m app.cli restore &lt;file&gt;</span> (see the README).
+        The .env file with the secret key is not included; keep it with your backups.
+      </p>
+      <Dialog
+        open={toDelete !== null}
+        onOpenChange={(open) => !open && setToDelete(null)}
+        title="Delete this backup?"
+        description="The archive is removed from the server. This can't be undone."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setToDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={remove.isPending}
+              onClick={() => toDelete && remove.mutate(toDelete)}
+            >
+              Delete backup
+            </Button>
+          </>
+        }
+      >
+        <p className="font-mono text-sm text-ink-2">{toDelete}</p>
+      </Dialog>
     </Card>
   );
 }

@@ -8,9 +8,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     PATH="/opt/venv/bin:$PATH"
 
-# Pango/HarfBuzz for WeasyPrint PDF rendering; fonts for report text
+# Pango/HarfBuzz for WeasyPrint PDF rendering; fonts for report text;
+# pg_dump/pg_restore for backups (Debian trixie ships 17, matching the postgres:17 image)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core \
+        postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /usr/local/bin/uv
@@ -29,11 +31,12 @@ RUN uv sync --frozen --no-dev \
         /usr/local/lib/python3.13/test/wheeldata \
         /usr/local/bin/pip* \
     && useradd --system --uid 10001 --home /app app \
-    && mkdir -p /data && chown -R app /data
+    && mkdir -p /data /backups && chown -R app /data /backups
 
 USER app
-ENV RM_STORAGE_DIR=/data
-VOLUME ["/data"]
+ENV RM_STORAGE_DIR=/data \
+    RM_BACKUP_DIR=/backups
+VOLUME ["/data", "/backups"]
 EXPOSE 8000
 
 # Migrations run once from the api container (see docker-compose.yml)

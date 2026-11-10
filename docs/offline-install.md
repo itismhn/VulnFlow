@@ -148,12 +148,16 @@ Back up first (see below). To roll back, keep the previous `vulnflow-images.tar`
 
 ## Backups
 
+Admins can make a full backup (database, uploaded scans, and reports in one archive) under **Settings → Backups**, and turn on daily or weekly automatic backups there. To make one from the command line and copy it out of the container:
+
 ```bash
-docker compose -f deploy/docker-compose.yml --env-file .env exec -T db pg_dump -U report_manager -Fc -f /tmp/vulnflow.dump report_manager
-docker compose -f deploy/docker-compose.yml --env-file .env cp db:/tmp/vulnflow.dump ./vulnflow.dump
+name=$(docker compose -f deploy/docker-compose.yml --env-file .env exec -T api python -m app.cli backup --print-name)
+docker compose -f deploy/docker-compose.yml --env-file .env cp api:/backups/$name ./$name
 ```
 
-Uploaded scans and generated reports are kept in the `report-manager_storage` Docker volume.
+Archives are kept in the `vulnflow_backups` Docker volume. Copy them to another server (or mount a network share at `/backups`), together with your `.env` file, which is not included in the archive.
+
+To restore, follow [Backup and restore](../README.md#backup-and-restore) in the README. Before an upgrade, make a backup first.
 
 ## Server requirements
 

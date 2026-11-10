@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     assets,
     auth,
+    backups,
     dashboard,
     findings,
     misc,
@@ -38,6 +39,7 @@ for module in (
     views,
     notifications,
     settings,
+    backups,
     misc,
 ):
     api_router.include_router(module.router)

@@ -16,6 +16,10 @@ DEFAULTS: dict[str, Any] = {
     # Defaults for new report templates
     "branding_company": "",
     "branding_classification": "CONFIDENTIAL - INTERNAL",
+    # Automatic full backups: "off", "daily" or "weekly"
+    "backup_schedule": "off",
+    # Scheduled backups to keep; older ones are deleted (manual backups are never pruned)
+    "backup_keep": 7,
 }
 
 

@@ -23,6 +23,8 @@ jobs:
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
     env:
       RM_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/rm_test
+      # Backup tests need pg_dump matching the server's major version
+      RM_PG_BIN_DIR: /usr/lib/postgresql/17/bin
     defaults:
       run:
         working-directory: backend
@@ -30,6 +32,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install system libraries for PDF rendering
         run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0
+      - name: Install PostgreSQL 17 client tools
+        run: |
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"

@@ -1,5 +1,5 @@
 .PHONY: help install dev-db migrate api worker web test lint typecheck demo \
-	docker-env docker-up docker-down docker-ps docker-logs docker-admin docker-demo docker-backup docker-bundle
+	docker-env docker-up docker-down docker-ps docker-logs docker-admin docker-demo docker-backup docker-restore docker-bundle
 
 BACKEND := backend
 FRONTEND := frontend
@@ -74,10 +74,20 @@ docker-admin:  ## Create the first admin account in the Docker stack
 docker-demo:  ## Load demo data into the Docker stack
 	$(COMPOSE) exec api python -m app.cli seed-demo
 
-docker-backup:  ## Dump the database to backups/ (uploaded files live in the storage volume)
+docker-backup:  ## Full backup (database, scans, reports) into the backups volume, with a copy in backups/
 	@mkdir -p backups
-	$(COMPOSE) exec -T db pg_dump -U report_manager -Fc report_manager > backups/vulnflow-$$(date +%Y%m%d-%H%M%S).dump
-	@ls -lh backups | tail -1
+	@name=$$($(COMPOSE) exec -T api python -m app.cli backup --print-name) \
+		&& $(COMPOSE) cp api:/backups/$$name backups/$$name \
+		&& ls -lh backups/$$name
+
+docker-restore:  ## Replace ALL data with a backup: make docker-restore FILE=backups/vulnflow-....tar.gz
+	@test -f "$(FILE)" || { echo "Usage: make docker-restore FILE=backups/<archive>.tar.gz"; exit 1; }
+	$(COMPOSE) cp $(FILE) api:/backups/
+	@# docker cp writes the file as root; the app user must be able to read it
+	$(COMPOSE) exec -T -u root api chown app /backups/$(notdir $(FILE))
+	$(COMPOSE) stop web api worker
+	$(COMPOSE) run --rm --no-deps api python -m app.cli restore $(notdir $(FILE))
+	$(COMPOSE) up -d
 
 docker-bundle:  ## Build images for a host without internet into dist/vulnflow-offline.zip (PLATFORM=linux/amd64)
 	rm -rf $(BUNDLE) dist/vulnflow-offline.zip && mkdir -p $(BUNDLE)/deploy

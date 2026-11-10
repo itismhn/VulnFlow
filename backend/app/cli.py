@@ -161,6 +161,88 @@ def rebuild_software(
     typer.secho(f"Software inventory rebuilt: {count} entries.", fg="green")
 
 
+@cli.command("backup")
+def backup_cmd(
+    print_name: bool = typer.Option(False, "--print-name", help="Print only the archive name (for scripts)"),
+) -> None:
+    """Write a full backup (database, uploaded scans, reports) to the backup folder."""
+    from app.core.config import settings
+    from app.services import backup
+
+    if not backup.acquire_lock():
+        typer.secho("A backup is already running.", fg="red", err=True)
+        raise typer.Exit(1)
+    try:
+        info = backup.run_backup("manual")
+    except backup.BackupError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(1) from exc
+    finally:
+        backup.release_lock()
+    if print_name:
+        typer.echo(info.name)
+        return
+    typer.secho(
+        f"Backup written: {settings.backup_path / info.name} ({info.size_bytes / 1e6:.1f} MB)", fg="green"
+    )
+    typer.echo("Keep a copy on another server, together with your .env file (not included).")
+
+
+@cli.command("list-backups")
+def list_backups_cmd() -> None:
+    """List backups in the backup folder, newest first."""
+    from app.core.config import settings
+    from app.services import backup
+
+    items = backup.list_backups()
+    typer.echo(f"Backup folder: {settings.backup_path}")
+    for b in items:
+        counts = b.manifest.get("counts", {})
+        typer.echo(
+            f"  {b.name}  {b.size_bytes / 1e6:8.1f} MB  v{b.manifest.get('version', '?')}  "
+            f"{counts.get('scans', '?')} scans, {counts.get('findings', '?')} findings"
+        )
+    if not items:
+        typer.echo("  (none)")
+
+
+@cli.command("restore")
+def restore_cmd(
+    archive: Path = typer.Argument(..., help="Backup file, or the name of one in the backup folder"),
+    yes: bool = typer.Option(False, "--yes", help="Don't ask for confirmation"),
+    force: bool = typer.Option(
+        False, "--force", help="Restore even while other database connections are open"
+    ),
+) -> None:
+    """Replace ALL current data with a backup. Stop the api and worker first."""
+    from app.core.config import settings
+    from app.services import backup
+
+    path = archive if archive.is_file() else settings.backup_path / archive.name
+    if not path.is_file():
+        typer.secho(f"Backup not found: {archive}", fg="red", err=True)
+        raise typer.Exit(1)
+    try:
+        manifest = backup.read_manifest(path)
+    except Exception as exc:
+        typer.secho(f"Can't read {path}: {exc}", fg="red", err=True)
+        raise typer.Exit(1) from exc
+    counts = manifest.get("counts", {})
+    typer.echo(
+        f"Backup from {manifest.get('created_at')} (VulnFlow {manifest.get('version')}): "
+        f"{counts.get('users', '?')} users, {counts.get('scans', '?')} scans, "
+        f"{counts.get('findings', '?')} findings, {manifest.get('files', '?')} files"
+    )
+    if not yes:
+        typer.confirm("This deletes everything currently in VulnFlow and replaces it. Continue?", abort=True)
+    try:
+        backup.restore_backup(path, force=force, say=typer.echo)
+    except backup.BackupError as exc:
+        typer.secho(str(exc), fg="red", err=True)
+        raise typer.Exit(1) from exc
+    typer.secho("Restore complete. Start the api and worker again; everyone must sign in again.", fg="green")
+
+
 def main() -> None:
     cli()
 

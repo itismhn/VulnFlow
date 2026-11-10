@@ -105,3 +105,29 @@ def rebuild_software_task() -> int:
         db.commit()
     log.info("Software inventory rebuilt: %s entries", count)
     return count
+
+
+@celery.task(name="backup.create")
+def create_backup_task(kind: str = "manual", locked: bool = False) -> str | None:
+    """`locked`: the API took the lock when it queued the task, so the UI shows it as running."""
+    from app.services import backup
+
+    if not locked and not backup.acquire_lock():
+        log.warning("A backup is already running, skipped the %s backup", kind)
+        return None
+    try:
+        return backup.run_backup(kind).name
+    except Exception:
+        return None  # recorded in the last-run file and the audit log
+    finally:
+        backup.release_lock()
+
+
+@celery.task(name="backup.scheduled")
+def scheduled_backup_task() -> str | None:
+    from app.services import backup
+
+    with SessionLocal() as db:
+        if not backup.scheduled_due(db):
+            return None
+    return create_backup_task("scheduled")

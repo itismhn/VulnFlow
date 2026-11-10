@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -125,6 +125,8 @@ class SettingsOut(BaseModel):
     audit_retention_days: int
     branding_company: str
     branding_classification: str
+    backup_schedule: Literal["off", "daily", "weekly"]
+    backup_keep: int
 
 
 class SettingsUpdate(BaseModel):
@@ -133,3 +135,5 @@ class SettingsUpdate(BaseModel):
     audit_retention_days: int | None = Field(default=None, ge=0, le=3650)
     branding_company: str | None = Field(default=None, max_length=128)
     branding_classification: str | None = Field(default=None, max_length=128)
+    backup_schedule: Literal["off", "daily", "weekly"] | None = None
+    backup_keep: int | None = Field(default=None, ge=1, le=365)
