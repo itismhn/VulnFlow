@@ -6,6 +6,7 @@ applies to report contents exactly like it does in the UI.
 
 import csv
 import io
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from app.services.dashboard import Dashboard, build_dashboard
 from app.services.exporting import SEVERITY_LABELS, finding_rows
 from app.services.findings_query import apply_filters, base_query
 from app.services.reporting import charts
+from app.services.reporting.assets import image_uri
 from app.services.reporting.xlsx import safe_cell, sheets_to_xlsx
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -48,7 +50,7 @@ _env.filters["sev_class"] = lambda s: SEVERITY_LABELS[int(s)].lower()
 _env.filters["dt"] = lambda d: d.strftime("%Y-%m-%d") if d else "—"
 
 
-def describe_filters(f: FindingFilters, db: Session) -> list[str]:
+def describe_filters(f: FindingFilters, db: Session, user: User) -> list[str]:
     out = []
     if f.severity:
         out.append("Severity: " + ", ".join(SEVERITY_LABELS[s] for s in sorted(f.severity, reverse=True)))
@@ -57,18 +59,41 @@ def describe_filters(f: FindingFilters, db: Session) -> list[str]:
     if f.ip:
         out.append(f"IP / range: {f.ip}")
     if f.network_id:
-        names = db.scalars(select(Network.name).where(Network.id.in_(f.network_id)))
-        out.append("Networks: " + ", ".join(names))
+        stmt = select(Network.name).where(Network.id.in_(f.network_id))
+        if user.scope_restricted:
+            stmt = stmt.where(Network.id.in_([n.id for n in user.networks]))
+        names = list(db.scalars(stmt))
+        out.append("Networks: " + (", ".join(names) or "No accessible networks selected"))
     if f.zone:
         out.append("Zones: " + ", ".join(f.zone))
     if f.scan_id:
         out.append(f"Scan #{f.scan_id}")
-    if f.exploitable:
-        out.append("Exploitable only")
+    if f.exploitable is not None:
+        out.append("Exploitable only" if f.exploitable else "No known public exploit")
     if f.cve:
         out.append(f"CVE: {f.cve}")
     if f.q:
         out.append(f"Search: {f.q}")
+    if f.asset_id:
+        out.append(f"Asset #{f.asset_id}")
+    if f.plugin_id:
+        out.append("Plugin IDs: " + ", ".join(map(str, f.plugin_id)))
+    if f.family:
+        out.append(f"Plugin family: {f.family}")
+    if f.port is not None:
+        out.append(f"Port: {f.port}")
+    if f.min_cvss is not None:
+        out.append(f"Minimum CVSS: {f.min_cvss}")
+    if f.min_vpr is not None:
+        out.append(f"Minimum VPR: {f.min_vpr}")
+    if f.assignee_id:
+        out.append(f"Assignee #{f.assignee_id}")
+    if f.overdue:
+        out.append("Overdue only")
+    if f.older_than_days is not None:
+        out.append(f"Older than {f.older_than_days} days")
+    if f.include_info:
+        out.append("Includes informational findings")
     return out or ["All active findings"]
 
 
@@ -114,7 +139,7 @@ def _network_sections(db: Session, user: User, filters: FindingFilters, top_n: i
     sections = []
     for net in nets:
         scoped = filters.model_copy(update={"network_id": [net.id]})
-        dash = build_dashboard(db, user, scoped, trend_days=28)
+        dash = build_dashboard(db, user, scoped, trend_days=28, top_n=top_n)
         if not dash.kpis.assets and not sum(dash.kpis.open.model_dump().values()):
             continue
         sections.append(
@@ -165,12 +190,15 @@ def _charts(dash: Dashboard) -> dict[str, str]:
 
 def build_context(db: Session, job: ReportJob, user: User) -> dict[str, Any]:
     template = job.template
-    kind = template.kind if template else "technical"
-    config = TemplateConfig.model_validate(template.config if template else {})
-    filters = FindingFilters.model_validate(job.filters or config.filters.model_dump())
-    sections = config.sections or DEFAULT_SECTIONS[kind]
+    snapshot = job.template_snapshot or {}
+    kind = snapshot.get("kind", template.kind if template else "technical")
+    config = TemplateConfig.model_validate(snapshot.get("config", template.config if template else {}))
+    filters = FindingFilters.model_validate(
+        job.filters if job.template_snapshot is not None else (job.filters or config.filters.model_dump())
+    )
+    sections = config.sections
 
-    dash = build_dashboard(db, user, filters)
+    dash = build_dashboard(db, user, filters, top_n=config.top_n)
     ctx: dict[str, Any] = {
         "app_name": settings.app_name,
         "title": job.name,
@@ -180,17 +208,34 @@ def build_context(db: Session, job: ReportJob, user: User) -> dict[str, Any]:
         "intro": config.intro,
         "generated_at": datetime.now(UTC),
         "author": user,
-        "filters": describe_filters(filters, db),
+        "filters": describe_filters(filters, db, user),
         "dash": dash,
         "charts": _charts(dash),
         "top_n": config.top_n,
         "total_open": sum(dash.kpis.open.model_dump().values()),
+        "config": config,
+        "image_uri": image_uri,
     }
     if "details" in sections:
         ctx["groups"], ctx["truncated"] = _detail_groups(db, user, filters, config.group_by)
         ctx["group_by"] = config.group_by
     if "networks" in sections:
         ctx["networks"] = _network_sections(db, user, filters, config.top_n)
+    variables = {
+        "report.title": job.name,
+        "report.date": ctx["generated_at"].strftime("%Y-%m-%d"),
+        "company.name": config.branding.company_name or settings.app_name,
+        "company.classification": config.branding.classification,
+        "report.author": user.full_name or user.username,
+        "report.scope": " · ".join(ctx["filters"]),
+        "metrics.total_open": str(ctx["total_open"]),
+        "metrics.assets": str(dash.kpis.assets),
+    }
+
+    def expand(text: str) -> str:
+        return re.sub(r"\{\{\s*([\w.]+)\s*\}\}", lambda m: variables.get(m[1], m[0]), text)
+
+    ctx["expand"] = expand
     return ctx
 
 
@@ -268,12 +313,20 @@ def _xlsx(db: Session, user: User, ctx: dict[str, Any], filters: FindingFilters)
 
 
 def render_report(db: Session, job: ReportJob) -> Path:
+    if job.format not in {f.value for f in ReportFormat}:
+        raise RuntimeError(
+            "This report format is no longer supported. Generate a PDF, HTML, Excel or CSV report."
+        )
     user = job.created_by
     if user is None:
         raise RuntimeError("Report owner no longer exists")
     template = job.template
-    config = TemplateConfig.model_validate(template.config if template else {})
-    filters = FindingFilters.model_validate(job.filters or config.filters.model_dump())
+    config = TemplateConfig.model_validate(
+        (job.template_snapshot or {}).get("config", template.config if template else {})
+    )
+    filters = FindingFilters.model_validate(
+        job.filters if job.template_snapshot is not None else (job.filters or config.filters.model_dump())
+    )
 
     if job.format == ReportFormat.CSV:
         buf = io.StringIO()

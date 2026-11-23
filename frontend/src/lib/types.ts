@@ -320,6 +320,42 @@ export interface Branding {
   classification: string;
   primary_color: string;
   footer_text: string;
+  logo_asset?: string | null;
+  logo_width_mm?: number;
+  header_text?: string;
+}
+
+export interface PageBlock {
+  id: string;
+  type: "text" | "image";
+  text: string;
+  asset?: string | null;
+  x: number;
+  y: number;
+  width: number;
+  font_size: number;
+  color: string;
+  bold: boolean;
+  align: "left" | "center" | "right";
+}
+
+export interface OpeningPage {
+  id: string;
+  background_color: string;
+  background_asset?: string | null;
+  background_fit: "cover" | "contain";
+  overlay: number;
+  blocks: PageBlock[];
+}
+
+export interface ReportLayout {
+  page_size: "A4" | "Letter";
+  orientation: "portrait" | "landscape";
+  font: "sans-serif" | "serif" | "monospace";
+  font_size: number;
+  margin_mm: number;
+  page_numbers: boolean;
+  show_cover: boolean;
 }
 
 export interface TemplateConfig {
@@ -329,6 +365,13 @@ export interface TemplateConfig {
   intro: string;
   top_n: number;
   group_by: "host" | "plugin";
+  opening_pages?: OpeningPage[];
+  layout?: ReportLayout;
+  section_titles?: Record<string, string>;
+  page_breaks?: string[];
+  custom_sections?: { id: string; title: string; text: string; page_break: boolean }[];
+  summary_text?: string;
+  recommendations_text?: string;
 }
 
 export interface ReportTemplate {
@@ -344,7 +387,7 @@ export interface ReportTemplate {
 export interface ReportJob {
   id: number;
   name: string;
-  format: ReportFormat;
+  format: string;
   status: "queued" | "running" | "done" | "failed";
   error: string;
   size_bytes: number;

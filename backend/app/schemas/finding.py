@@ -12,7 +12,7 @@ class FindingFilters(BaseModel):
     """Shared filter set used by the findings explorer, exports, and reports."""
 
     q: str | None = None
-    severity: list[int] | None = None
+    severity: list[Annotated[int, Field(ge=0, le=4)]] | None = None
     status: list[FindingStatus] | None = None
     ip: str | None = Field(default=None, description="Single IP or CIDR range")
     network_id: list[int] | None = None
@@ -155,7 +155,7 @@ class FindingGroup(BaseModel):
 
 def finding_filters(
     q: str | None = None,
-    severity: Annotated[list[int] | None, Query()] = None,
+    severity: Annotated[list[Annotated[int, Field(ge=0, le=4)]] | None, Query()] = None,
     status: Annotated[list[FindingStatus] | None, Query()] = None,
     ip: Annotated[str | None, Query(description="Single IP or CIDR range")] = None,
     network_id: Annotated[list[int] | None, Query()] = None,

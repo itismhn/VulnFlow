@@ -1,9 +1,10 @@
+import mimetypes
 import re
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
@@ -11,15 +12,19 @@ from app.core.audit import audit
 from app.core.deps import DB, require
 from app.core.permissions import Perm
 from app.models import ReportJob, ReportTemplate, User
-from app.models.enums import JobStatus, ReportFormat, Role
+from app.models.enums import JobStatus, Role
 from app.schemas.common import Page
 from app.schemas.report import (
     ReportCreate,
     ReportOut,
+    ReportPreview,
+    TemplateConfig,
     TemplateCreate,
     TemplateOut,
     TemplateUpdate,
 )
+from app.services.reporting.assets import MAX_UPLOAD, asset_path, store_asset, validate_assets
+from app.services.reporting.engine import build_context, render_html
 from app.workers.tasks import generate_report_task
 
 router = APIRouter(tags=["reports"])
@@ -27,12 +32,64 @@ router = APIRouter(tags=["reports"])
 Reporter = Annotated[User, Depends(require(Perm.REPORTS_CREATE))]
 TemplateManager = Annotated[User, Depends(require(Perm.TEMPLATES_MANAGE))]
 
-MEDIA_TYPES = {
-    ReportFormat.PDF: "application/pdf",
-    ReportFormat.HTML: "text/html",
-    ReportFormat.CSV: "text/csv",
-    ReportFormat.XLSX: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-}
+
+def _validate_config(config: TemplateConfig) -> None:
+    try:
+        validate_assets(config)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/report-assets", status_code=201)
+async def upload_report_asset(file: UploadFile, request: Request, user: TemplateManager, db: DB) -> dict:
+    data = await file.read(MAX_UPLOAD + 1)
+    try:
+        asset = store_asset(data, file.filename or "upload")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    audit(
+        db,
+        "report_asset.uploaded",
+        request=request,
+        user=user,
+        entity_type="report_asset",
+        entity_id=asset["id"].split(".")[0],
+        details={"asset": asset["id"], "filename": asset["filename"]},
+    )
+    db.commit()
+    return asset
+
+
+@router.get("/report-assets/{asset_id}")
+def get_report_asset(asset_id: str, _: Reporter) -> FileResponse:
+    try:
+        path = asset_path(asset_id)
+    except ValueError as exc:
+        raise HTTPException(404, "Asset not found") from exc
+    if not path.is_file():
+        raise HTTPException(404, "Asset not found")
+    return FileResponse(path)
+
+
+@router.post("/report-preview")
+def preview_report(body: ReportPreview, user: Reporter, db: DB, format: str = "html") -> Response:
+    _validate_config(body.config)
+    job = ReportJob(
+        name=body.name,
+        filters=body.config.filters.model_dump(mode="json", exclude_none=True),
+        template_snapshot={"kind": body.kind, "config": body.config.model_dump(mode="json")},
+    )
+    ctx = build_context(db, job, user)
+    if format == "pdf":
+        try:
+            from weasyprint import HTML
+
+            return Response(HTML(string=render_html(ctx)).write_pdf(), media_type="application/pdf")
+        except OSError as exc:
+            raise HTTPException(422, "PDF rendering needs Pango on the server. Use HTML preview.") from exc
+    if format != "html":
+        raise HTTPException(422, "Manual templates support HTML or PDF preview")
+    return Response(render_html(ctx), media_type="text/html")
 
 
 # ---- Templates -------------------------------------------------------------
@@ -62,6 +119,7 @@ def _commit_unique(db: DB) -> None:
 
 @router.post("/report-templates", response_model=TemplateOut, status_code=201)
 def create_template(body: TemplateCreate, request: Request, user: TemplateManager, db: DB) -> ReportTemplate:
+    _validate_config(body.config)
     template = ReportTemplate(
         name=body.name,
         description=body.description,
@@ -98,6 +156,7 @@ def update_template(
     if body.description is not None:
         template.description = body.description
     if body.config is not None:
+        _validate_config(body.config)
         template.config = body.config.model_dump(mode="json")
     audit(db, "template.updated", request=request, user=user, entity_type="template", entity_id=template.id)
     _commit_unique(db)
@@ -154,12 +213,17 @@ def list_reports(
 @router.post("/reports", response_model=ReportOut, status_code=201)
 def create_report(body: ReportCreate, request: Request, user: Reporter, db: DB) -> ReportJob:
     template = _get_template(db, body.template_id)
-    filters = body.filters.model_dump(mode="json", exclude_none=True) if body.filters else {}
+    config = body.config or TemplateConfig.model_validate(template.config)
+    _validate_config(config)
+    filters = (body.filters if body.filters is not None else config.filters).model_dump(
+        mode="json", exclude_none=True
+    )
     job = ReportJob(
         name=body.name or template.name,
         template_id=template.id,
         format=body.format,
         filters=filters,
+        template_snapshot={"kind": template.kind, "config": config.model_dump(mode="json")},
         created_by_id=user.id,
         status=JobStatus.QUEUED,
     )
@@ -203,7 +267,7 @@ def download_report(report_id: int, request: Request, user: Reporter, db: DB) ->
     stamp = job.created_at.strftime("%Y%m%d")
     return FileResponse(
         job.file_path,
-        media_type=MEDIA_TYPES[ReportFormat(job.format)],
+        media_type=mimetypes.guess_type(job.file_path)[0] or "application/octet-stream",
         filename=f"{safe_name}-{stamp}.{job.format}",
     )
 

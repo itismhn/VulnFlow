@@ -36,3 +36,7 @@ backend/.dev-credentials
 # Database dumps from make docker-backup
 backups/
 /dist/
+
+# Local report demonstrations and rendered verification pages
+/output/
+/tmp/

@@ -73,9 +73,13 @@ def test_second_backup_while_running_is_refused(admin_client: ApiClient) -> None
 
 
 def test_restore_replaces_data_and_files(admin_client: ApiClient) -> None:
+    from app.services.reporting.assets import asset_path
+
     admin_client.post("/api/v1/networks", json={"name": "Core", "cidr": "10.10.0.0/16"})
     kept = scan_file_path("b" * 64)
     kept.write_text("original")
+    report_asset = asset_path("d" * 64 + ".png")
+    report_asset.write_bytes(b"report logo")
     with SessionLocal() as s:
         info = backup.create_backup(s)
     archive = settings.backup_path / info.name
@@ -83,6 +87,7 @@ def test_restore_replaces_data_and_files(admin_client: ApiClient) -> None:
     # Changes after the backup: all of them must be undone
     admin_client.post("/api/v1/networks", json={"name": "Later", "cidr": "10.20.0.0/16"})
     kept.unlink()
+    report_asset.unlink()
     scan_file_path("c" * 64).write_text("added later")
     admin_client.cookies.clear()
 
@@ -94,6 +99,7 @@ def test_restore_replaces_data_and_files(admin_client: ApiClient) -> None:
         assert s.scalar(select(RefreshToken.id).where(RefreshToken.revoked_at.is_(None))) is None
         assert s.scalar(select(AuditLog.id).where(AuditLog.action == "backup.restored"))
     assert kept.read_text() == "original"
+    assert report_asset.read_bytes() == b"report logo"
     assert not scan_file_path("c" * 64).exists()
 
 

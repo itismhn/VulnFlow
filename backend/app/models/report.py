@@ -33,6 +33,7 @@ class ReportJob(Timestamps, Base):
     template_id: Mapped[int | None] = mapped_column(ForeignKey("report_templates.id", ondelete="SET NULL"))
     format: Mapped[str] = mapped_column(String(8))
     filters: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    template_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(16), default=JobStatus.QUEUED)
     error: Mapped[str] = mapped_column(Text, default="")
     file_path: Mapped[str] = mapped_column(String(512), default="")

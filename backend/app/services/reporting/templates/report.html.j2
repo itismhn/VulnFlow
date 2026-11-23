@@ -3,22 +3,24 @@
 <head>
 <meta charset="utf-8">
 <title>{{ title }}</title>
+{% set page_width = (210 if config.layout.page_size == "A4" else 215.9) if config.layout.orientation == "portrait" else (297 if config.layout.page_size == "A4" else 279.4) %}
+{% set page_height = (297 if config.layout.page_size == "A4" else 279.4) if config.layout.orientation == "portrait" else (210 if config.layout.page_size == "A4" else 215.9) %}
 <style>
   :root { --brand: {{ branding.primary_color }}; }
   @page {
-    size: A4;
-    margin: 22mm 16mm 20mm 16mm;
-    @top-center { content: "{{ branding.classification }}"; font: 600 8pt sans-serif; color: #b91c1c; letter-spacing: .08em; }
-    @bottom-left { content: "{{ (branding.footer_text or branding.company_name or app_name)|e }}"; font: 8pt sans-serif; color: #64748b; }
-    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt sans-serif; color: #64748b; }
+    size: {{ config.layout.page_size }} {{ config.layout.orientation }};
+    margin: {{ config.layout.margin_mm }}mm;
+    @top-center { content: element(report-header); }
+    @bottom-left { content: element(report-footer); }
+    @bottom-right { content: {% if config.layout.page_numbers %}"Page " counter(page) " of " counter(pages){% else %}none{% endif %}; font: 8pt sans-serif; color: #64748b; }
   }
   @page cover { margin: 0; @top-center { content: none; } @bottom-left { content: none; } @bottom-right { content: none; } }
   * { box-sizing: border-box; }
-  body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; color: #0f172a; font-size: 9.5pt; line-height: 1.5; margin: 0; }
+  body { font-family: {{ config.layout.font }}; color: #0f172a; font-size: {{ config.layout.font_size }}pt; line-height: 1.5; margin: 0; }
   h1, h2, h3 { line-height: 1.2; margin: 0 0 .5em; }
-  h2 { font-size: 15pt; border-bottom: 2px solid var(--brand); padding-bottom: 4px; margin-top: 1.4em; }
+  h2 { font-size: 15pt; border-bottom: 2px solid var(--brand); padding-bottom: 4px; margin-top: 1.4em; break-after: avoid; }
   h3 { font-size: 11pt; margin-top: 1em; }
-  .cover { page: cover; height: 297mm; padding: 38mm 22mm; background: linear-gradient(160deg, #0f172a 0%, #1e293b 60%, var(--brand) 160%); color: #fff; page-break-after: always; position: relative; }
+  .cover { page: cover; height: {{ page_height }}mm; padding: 38mm 22mm; background: linear-gradient(160deg, #0f172a 0%, #1e293b 60%, var(--brand) 160%); color: #fff; page-break-after: always; position: relative; }
   .cover .classification { position: absolute; top: 14mm; left: 22mm; right: 22mm; font-size: 8pt; letter-spacing: .12em; color: #fca5a5; font-weight: 700; }
   .cover .company { font-size: 11pt; letter-spacing: .1em; text-transform: uppercase; color: #cbd5e1; }
   .cover h1 { font-size: 30pt; margin: 14mm 0 6mm; }
@@ -31,10 +33,13 @@
   .kpi .l { font-size: 8pt; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
   .kpi.critical .v { color: #b91c1c; } .kpi.high .v { color: #ea580c; } .kpi.medium .v { color: #ca8a04; } .kpi.low .v { color: #2563eb; }
   .row { display: flex; gap: 16px; align-items: flex-start; }
+  .chart-donut { flex: 0 0 30%; min-width: 0; }
+  .chart-trend { flex: 1; min-width: 0; }
+  svg { max-width: 100%; height: auto; }
   .muted { color: #64748b; }
   table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 8.5pt; }
   th { text-align: left; background: #f1f5f9; color: #334155; font-weight: 600; padding: 5px 6px; border-bottom: 1px solid #cbd5e1; }
-  td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; overflow-wrap: anywhere; }
   tr { page-break-inside: avoid; }
   .sev { display: inline-block; padding: 1px 6px; border-radius: 3px; color: #fff; font-size: 7.5pt; font-weight: 700; text-transform: uppercase; }
   .sev.critical { background: #b91c1c; } .sev.high { background: #ea580c; } .sev.medium { background: #ca8a04; } .sev.low { background: #2563eb; } .sev.info { background: #64748b; }
@@ -48,11 +53,41 @@
   .note { background: #fffbeb; border: 1px solid #fde68a; padding: 6px 8px; border-radius: 4px; font-size: 8.5pt; }
   .intro { white-space: pre-line; }
   .network { page-break-before: always; }
+
+  .report-header { position: running(report-header); font: 8pt sans-serif; color: #64748b; }
+  .report-footer { position: running(report-footer); font: 8pt sans-serif; color: #64748b; }
+  .opening-page { page: cover; width: {{ page_width }}mm; height: {{ page_height }}mm; position: relative; overflow: hidden; break-after: page; background-repeat: no-repeat; background-position: center; }
+  .page-block { position: absolute; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.3; }
+  .page-block img { width: 100%; height: auto; }
+  .custom-section { white-space: pre-wrap; overflow-wrap: anywhere; }
+  @media screen {
+    html { background: #e2e8f0; }
+    body { width: {{ page_width }}mm; margin: 20px auto; background: white; box-shadow: 0 4px 24px #0f172a20; }
+    .report-header, .report-footer { display: none; }
+    .report-body { padding: {{ config.layout.margin_mm }}mm; }
+    .opening-page, .cover { margin-bottom: 20px; }
+  }
 </style>
 </head>
 <body>
 
+<div class="report-header">{{ branding.header_text }} · {{ branding.classification }}</div>
+<div class="report-footer">{{ branding.footer_text or branding.company_name or app_name }}</div>
+{% if config.layout.show_cover %}
+{% if config.opening_pages %}
+{% for page in config.opening_pages %}
+<section class="opening-page" style="background-color:{{ page.background_color }};{% if page.background_asset %}background-image:url('{{ image_uri(page.background_asset) }}');background-size:{{ page.background_fit }};{% endif %}">
+<div style="position:absolute;inset:0;background:#000;opacity:{{ page.overlay }}"></div>
+{% for block in page.blocks %}
+<div class="page-block" style="left:{{ block.x }}%;top:{{ block.y }}%;width:{{ block.width }}%;font-size:{{ block.font_size }}pt;color:{{ block.color }};font-weight:{{ '700' if block.bold else '400' }};text-align:{{ block.align }}">
+{% if block.type == 'image' and block.asset %}<img src="{{ image_uri(block.asset) }}" alt="Report image">{% else %}{{ expand(block.text) }}{% endif %}
+</div>
+{% endfor %}
+</section>
+{% endfor %}
+{% else %}
 <section class="cover">
+{% if branding.logo_asset %}<img src="{{ image_uri(branding.logo_asset) }}" alt="Company logo" style="width:{{ branding.logo_width_mm }}mm;max-height:30mm;object-fit:contain;margin-bottom:10mm">{% endif %}
   <div class="classification">{{ branding.classification }}</div>
   <div class="company">{{ branding.company_name or app_name }}</div>
   <h1>{{ title }}</h1>
@@ -67,9 +102,12 @@
   <div class="scope"><strong>Scope:</strong> {{ filters|join(" · ") }}</div>
 </section>
 
-{% if "summary" in sections %}
-<h2>Summary</h2>
-{% if intro %}<p class="intro">{{ intro }}</p>{% endif %}
+{% endif %}
+{% endif %}
+{% macro section_summary() %}
+<h2>{{ config.section_titles.get("summary", "Summary") }}</h2>
+{% if intro %}<p class="intro">{{ expand(intro) }}</p>{% endif %}
+{% if config.summary_text %}<p class="intro">{{ expand(config.summary_text) }}</p>{% else %}
 <p>
   This report covers <strong>{{ dash.kpis.assets }}</strong> assets with <strong>{{ total_open }}</strong> open findings,
   of which <strong>{{ dash.kpis.open.critical }}</strong> are critical and <strong>{{ dash.kpis.open.high }}</strong> are high severity.
@@ -78,7 +116,9 @@
 </p>
 {% endif %}
 
-{% if "kpis" in sections %}
+{% endmacro %}
+{% macro section_kpis() %}
+{% if config.section_titles.get("kpis") %}<h2>{{ config.section_titles["kpis"] }}</h2>{% endif %}
 <div class="kpis">
   <div class="kpi critical"><div class="v">{{ dash.kpis.open.critical }}</div><div class="l">Critical</div></div>
   <div class="kpi high"><div class="v">{{ dash.kpis.open.high }}</div><div class="l">High</div></div>
@@ -91,13 +131,13 @@
   <div class="kpi"><div class="v">{{ dash.kpis.overdue }}</div><div class="l">Overdue</div></div>
   <div class="kpi"><div class="v">{{ dash.kpis.mttr_days.critical if dash.kpis.mttr_days.critical is not none else "—" }}</div><div class="l">MTTR critical (days)</div></div>
 </div>
-{% endif %}
 
-{% if "charts" in sections %}
-<h2>Risk overview</h2>
+{% endmacro %}
+{% macro section_charts() %}
+<h2>{{ config.section_titles.get("charts", "Risk overview") }}</h2>
 <div class="row">
-  <div>{{ charts.donut|safe }}</div>
-  <div style="flex:1">
+  <div class="chart-donut">{{ charts.donut|safe }}</div>
+  <div class="chart-trend">
     <h3>Open findings trend</h3>
     {{ charts.trend|safe }}
     <div class="legend"><span><i style="background:#b91c1c"></i>Critical</span><span><i style="background:#ea580c"></i>High</span><span><i style="background:#ca8a04"></i>Medium</span></div>
@@ -105,10 +145,10 @@
 </div>
 <h3>Age of open findings</h3>
 {{ charts.age|safe }}
-{% endif %}
 
-{% if "top_vulns" in sections %}
-<h2>Top vulnerabilities</h2>
+{% endmacro %}
+{% macro section_top_vulns() %}
+<h2>{{ config.section_titles.get("top_vulns", "Top vulnerabilities") }}</h2>
 <table>
   <thead><tr><th>Severity</th><th>Vulnerability</th><th>Hosts</th><th>Exploit</th></tr></thead>
   <tbody>
@@ -119,10 +159,10 @@
   {% endfor %}
   </tbody>
 </table>
-{% endif %}
 
-{% if "top_hosts" in sections %}
-<h2>Most at-risk assets</h2>
+{% endmacro %}
+{% macro section_top_hosts() %}
+<h2>{{ config.section_titles.get("top_hosts", "Most at-risk assets") }}</h2>
 <table>
   <thead><tr><th>IP</th><th>Hostname</th><th>Risk score</th><th>Critical</th><th>High</th></tr></thead>
   <tbody>
@@ -133,10 +173,10 @@
   {% endfor %}
   </tbody>
 </table>
-{% endif %}
 
-{% if "zones" in sections and dash.by_zone %}
-<h2>Exposure by network zone</h2>
+{% endmacro %}
+{% macro section_zones() %}
+<h2>{{ config.section_titles.get("zones", "Exposure by network zone") }}</h2>
 {{ charts.zones|safe }}
 <table>
   <thead><tr><th>Zone</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th></tr></thead>
@@ -146,10 +186,11 @@
   {% endfor %}
   </tbody>
 </table>
-{% endif %}
 
-{% if "recommendations" in sections %}
-<h2>Recommendations</h2>
+{% endmacro %}
+{% macro section_recommendations() %}
+<h2>{{ config.section_titles.get("recommendations", "Recommendations") }}</h2>
+{% if config.recommendations_text %}<p class="intro">{{ expand(config.recommendations_text) }}</p>{% else %}
 <ol>
   {% if dash.kpis.exploitable %}<li>Prioritise the <strong>{{ dash.kpis.exploitable }}</strong> findings with known public exploits, starting with internet-facing and critical-zone assets.</li>{% endif %}
   {% if dash.kpis.open.critical %}<li>Remediate all <strong>{{ dash.kpis.open.critical }}</strong> critical findings within the agreed SLA; track owners and due dates for each.</li>{% endif %}
@@ -159,8 +200,9 @@
 </ol>
 {% endif %}
 
-{% if "details" in sections %}
-<h2>Findings in detail</h2>
+{% endmacro %}
+{% macro section_details() %}
+<h2>{{ config.section_titles.get("details", "Findings in detail") }}</h2>
 {% if truncated %}<p class="note">Output limited to the first {{ groups|length }} groups. Use the XLSX/CSV export for the full data set.</p>{% endif %}
 {% if group_by == "host" %}
   {% for g in groups %}
@@ -173,9 +215,12 @@
       {% for f in g.instances %}
         <tr><td><span class="sev {{ f.severity|sev_class }}">{{ f.severity|sev_label }}</span></td><td>{{ f.plugin.name }}</td><td>{{ f.port }}/{{ f.protocol }}</td><td>{{ f.status|replace("_", " ") }}</td><td>{{ f.first_seen|dt }}</td></tr>
       {% endfor %}
+      {% if g.count > g.instances|length %}<tr><td colspan="5" class="muted">… and {{ g.count - g.instances|length }} more. Use XLSX/CSV for the full data set.</td></tr>{% endif %}
       </tbody>
     </table>
   </div>
+  {% else %}
+  <p class="muted">No findings match this report's scope.</p>
   {% endfor %}
 {% else %}
   {% for g in groups %}
@@ -206,9 +251,10 @@
   <p class="muted">No findings match this report's scope.</p>
   {% endfor %}
 {% endif %}
-{% endif %}
 
-{% if "networks" in sections %}
+{% endmacro %}
+{% macro section_networks() %}
+<h2>{{ config.section_titles.get("networks", "Network breakdown") }}</h2>
 {% for s in networks %}
 <section class="network">
   <h2>{{ s.network.name }} <span class="muted" style="font-size:10pt">{{ s.network.cidr }}{% if s.network.zone %} · {{ s.network.zone }}{% endif %}</span></h2>
@@ -241,7 +287,20 @@
 {% else %}
 <p class="muted">No networks with findings in scope. Define IP ranges under Networks to use this report.</p>
 {% endfor %}
-{% endif %}
 
-</body>
-</html>
+{% endmacro %}
+{% set section_renderers = {"summary": section_summary, "kpis": section_kpis, "charts": section_charts, "top_vulns": section_top_vulns, "top_hosts": section_top_hosts, "zones": section_zones, "recommendations": section_recommendations, "details": section_details, "networks": section_networks} %}
+
+<div class="report-body">
+{% for section in sections %}
+<section {% if section in config.page_breaks %}style="break-before:page"{% endif %}>
+{% if section in section_renderers %}{{ section_renderers[section]() }}
+{% else %}
+{% for custom in config.custom_sections if custom.id == section %}
+<section {% if custom.page_break %}style="break-before:page"{% endif %}><h2>{{ custom.title }}</h2><div class="custom-section">{{ expand(custom.text) }}</div></section>
+{% endfor %}
+{% endif %}
+</section>
+{% endfor %}
+</div>
+</body></html>

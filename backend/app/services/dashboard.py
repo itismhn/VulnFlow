@@ -75,7 +75,9 @@ def _sev_cols() -> list[Any]:
     ]
 
 
-def build_dashboard(db: Session, user: User, filters: FindingFilters, trend_days: int = 180) -> Dashboard:
+def build_dashboard(
+    db: Session, user: User, filters: FindingFilters, trend_days: int = 180, top_n: int = 10
+) -> Dashboard:
     now = datetime.now(UTC)
     active = filters.model_copy(update={"status": list(ACTIVE_STATUSES)})
 
@@ -211,7 +213,7 @@ def build_dashboard(db: Session, user: User, filters: FindingFilters, trend_days
             )
             .group_by(Asset.id, Network.id)
             .order_by(literal_column("risk").desc())
-            .limit(10)
+            .limit(top_n)
         )
     ]
 
@@ -237,7 +239,7 @@ def build_dashboard(db: Session, user: User, filters: FindingFilters, trend_days
             )
             .group_by(Plugin.id)
             .order_by(literal_column("severity").desc(), literal_column("hosts").desc())
-            .limit(10)
+            .limit(top_n)
         )
     ]
 

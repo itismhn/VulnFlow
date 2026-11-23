@@ -5,6 +5,7 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  LayoutTemplate,
   Loader2,
   Pencil,
   Plus,
@@ -23,23 +24,21 @@ import {
   Input,
   PageHeader,
   Select,
-  Textarea,
 } from "@/components/ui/primitives";
 import { useAppSettings } from "@/features/workflow/risk-dialog";
 import { api, downloadUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { useNetworks, useZones } from "@/lib/queries";
 import type {
   FindingFilters,
-  FindingStatus,
   Page,
   ReportFormat,
   ReportJob,
   ReportTemplate,
-  TemplateConfig,
   TemplateKind,
 } from "@/lib/types";
-import { cn, fmtBytes, fmtDate, SEVERITIES, STATUS_LABELS } from "@/lib/utils";
+import { fmtBytes, fmtDate } from "@/lib/utils";
+import { assetUrl, defaultConfig, ReportEditor } from "./report-editor";
+import { ScopeFields } from "./report-scope";
 
 const KIND_LABEL: Record<TemplateKind, string> = {
   executive: "Executive",
@@ -59,7 +58,7 @@ const SECTIONS: { key: string; label: string; kinds: TemplateKind[] }[] = [
   { key: "networks", label: "One section per network", kinds: ["network"] },
 ];
 
-const FORMAT_ICON: Record<ReportFormat, React.ReactNode> = {
+const FORMAT_ICON: Record<string, React.ReactNode> = {
   pdf: <FileText className="size-4" />,
   html: <FileText className="size-4" />,
   xlsx: <FileSpreadsheet className="size-4" />,
@@ -106,32 +105,20 @@ export function ReportsPage({ initialFilters }: { initialFilters?: string }) {
     <div className="animate-in">
       <PageHeader
         title="Reports"
-        description="Generate branded PDF, Excel, CSV or HTML reports from a template. Reports contain only the data you can see."
+        description="Design branded reports with your own backgrounds, logos, text, and page layouts."
         actions={
           can("templates:manage") && (
-            <Button
-              variant="primary"
-              onClick={() =>
-                setEditing({
-                  kind: "technical",
-                  config: {
-                    sections: ["summary", "kpis", "details"],
-                    filters: {},
-                    branding: {
-                      company_name: settings?.branding_company ?? "",
-                      classification: settings?.branding_classification || "CONFIDENTIAL - INTERNAL USE ONLY",
-                      primary_color: "#0e7490",
-                      footer_text: "",
-                    },
-                    intro: "",
-                    top_n: 10,
-                    group_by: "plugin",
-                  },
-                })
-              }
-            >
-              <Plus className="size-4" /> New template
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                onClick={() =>
+                  setEditing({ kind: "technical", config: defaultConfig(settings?.branding_company ?? "") })
+                }
+              >
+                <Plus className="size-4" />
+                New template
+              </Button>
+            </div>
           )
         }
       />
@@ -142,58 +129,67 @@ export function ReportsPage({ initialFilters }: { initialFilters?: string }) {
         </Card>
       )}
 
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-display text-lg font-semibold">Report templates</h2>
+        <span className="text-sm text-ink-3">{templates.length} templates · your branding, your content</span>
+      </div>
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {templates.map((t) => (
-          <Card key={t.id} className="flex flex-col p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-display font-semibold">{t.name}</h3>
-                  <Badge tone={t.builtin ? "neutral" : "brand"}>
-                    {t.builtin ? "Built-in" : KIND_LABEL[t.kind]}
-                  </Badge>
+          <Card key={t.id} className="flex flex-col overflow-hidden">
+            <TemplateThumbnail template={t} />
+            <div className="flex flex-1 flex-col p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-display font-semibold">{t.name}</h3>
+                    <Badge tone={t.builtin ? "neutral" : "brand"}>
+                      {t.builtin ? "Built-in" : KIND_LABEL[t.kind]}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-ink-2">{t.description || "Custom template"}</p>
                 </div>
-                <p className="mt-1 text-sm text-ink-2">{t.description || "Custom template"}</p>
-              </div>
-              {can("templates:manage") && (
-                <DropdownMenu
-                  trigger={
-                    <Button size="icon" variant="ghost" aria-label="Template actions">
-                      <Pencil className="size-3.5" />
-                    </Button>
-                  }
-                >
-                  <MenuItem
-                    onSelect={() =>
-                      setEditing({ ...t, id: undefined, builtin: false, name: `${t.name} (copy)` })
+                {can("templates:manage") && (
+                  <DropdownMenu
+                    trigger={
+                      <Button size="icon" variant="ghost" aria-label="Template actions">
+                        <Pencil className="size-3.5" />
+                      </Button>
                     }
                   >
-                    <Copy className="size-4" /> Duplicate
-                  </MenuItem>
-                  {!t.builtin && (
-                    <>
-                      <MenuItem onSelect={() => setEditing(t)}>
-                        <Pencil className="size-4" /> Edit
-                      </MenuItem>
-                      <MenuItem danger onSelect={() => removeTemplate.mutate(t.id)}>
-                        <Trash2 className="size-4" /> Delete
-                      </MenuItem>
-                    </>
-                  )}
-                </DropdownMenu>
-              )}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-1">
-              {(t.config.sections ?? []).map((s) => (
-                <span key={s} className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-3">
-                  {SECTIONS.find((x) => x.key === s)?.label ?? s}
-                </span>
-              ))}
-            </div>
-            <div className="mt-auto pt-4">
-              <Button variant="primary" size="sm" onClick={() => setGenerating(t)}>
-                Generate report
-              </Button>
+                    <MenuItem
+                      onSelect={() =>
+                        setEditing({ ...t, id: undefined, builtin: false, name: `${t.name} (copy)` })
+                      }
+                    >
+                      <Copy className="size-4" /> Duplicate
+                    </MenuItem>
+                    {!t.builtin && (
+                      <>
+                        <MenuItem onSelect={() => setEditing(t)}>
+                          <Pencil className="size-4" /> Edit
+                        </MenuItem>
+                        <MenuItem danger onSelect={() => removeTemplate.mutate(t.id)}>
+                          <Trash2 className="size-4" /> Delete
+                        </MenuItem>
+                      </>
+                    )}
+                  </DropdownMenu>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1">
+                {(t.config.sections ?? []).map((s) => (
+                  <span key={s} className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-3">
+                    {t.config.custom_sections?.find((x) => x.id === s)?.title ??
+                      SECTIONS.find((x) => x.key === s)?.label ??
+                      s}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-auto pt-4">
+                <Button variant="primary" size="sm" onClick={() => setGenerating(t)}>
+                  Generate report
+                </Button>
+              </div>
             </div>
           </Card>
         ))}
@@ -212,7 +208,7 @@ export function ReportsPage({ initialFilters }: { initialFilters?: string }) {
           <ul className="divide-y divide-line">
             {jobs.items.map((j) => (
               <li key={j.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                <span className="text-ink-3">{FORMAT_ICON[j.format]}</span>
+                <span className="text-ink-3">{FORMAT_ICON[j.format] ?? <FileText className="size-4" />}</span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{j.name}</div>
                   <div className="text-xs text-ink-3">
@@ -254,104 +250,35 @@ export function ReportsPage({ initialFilters }: { initialFilters?: string }) {
       {generating && (
         <GenerateDialog template={generating} preset={preset} onClose={() => setGenerating(null)} />
       )}
-      {editing && <TemplateDialog initial={editing} onClose={() => setEditing(null)} />}
+      {editing && <ReportEditor initial={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
 
-function ScopeFields({ value, onChange }: { value: FindingFilters; onChange: (f: FindingFilters) => void }) {
-  const { data: networks = [] } = useNetworks();
-  const { data: zones = [] } = useZones();
-  const toggle = <T,>(list: T[] | undefined, v: T) => {
-    const s = new Set(list ?? []);
-    if (s.has(v)) s.delete(v);
-    else s.add(v);
-    return s.size ? [...s] : undefined;
-  };
+function TemplateThumbnail({ template }: { template: ReportTemplate }) {
+  const page = template.config.opening_pages?.[0];
   return (
-    <div className="space-y-3">
-      <Field label="Severities" hint="None selected means low and above">
-        <div className="flex flex-wrap gap-1.5">
-          {SEVERITIES.map((s) => (
-            <button
-              key={s.value}
-              type="button"
-              onClick={() => onChange({ ...value, severity: toggle(value.severity, s.value) })}
-              className={cn(
-                "rounded-md border px-2.5 py-1 text-xs",
-                value.severity?.includes(s.value)
-                  ? "border-brand bg-brand-soft text-brand"
-                  : "border-line text-ink-2",
-              )}
-            >
-              {s.label}
-            </button>
-          ))}
+    <div
+      className="relative flex h-36 items-end overflow-hidden border-b border-line px-5 py-4"
+      style={{
+        backgroundColor: page?.background_color ?? "#102c46",
+        backgroundImage: page?.background_asset ? `url(${assetUrl(page.background_asset)})` : undefined,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
+      <div className="absolute inset-0 bg-black/15" />
+      <div className="absolute right-3 top-3 rounded bg-white/15 px-2 py-1 text-xs text-white">
+        {page ? `${template.config.opening_pages?.length} opening page(s)` : "Built-in layout"}
+      </div>
+      <div className="relative text-white">
+        <div className="mb-1 text-xs uppercase tracking-wider text-white/70">
+          {template.config.branding.company_name || "VulnFlow"}
         </div>
-      </Field>
-      <Field label="Statuses" hint="None selected means open, in progress and reopened">
-        <div className="flex flex-wrap gap-1.5">
-          {(Object.keys(STATUS_LABELS) as FindingStatus[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onChange({ ...value, status: toggle(value.status, s) })}
-              className={cn(
-                "rounded-md border px-2.5 py-1 text-xs",
-                value.status?.includes(s)
-                  ? "border-brand bg-brand-soft text-brand"
-                  : "border-line text-ink-2",
-              )}
-            >
-              {STATUS_LABELS[s]}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 font-display text-xl font-semibold">
+          <LayoutTemplate className="size-5" />
+          {template.name}
         </div>
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Network">
-          <Select
-            value={value.network_id?.[0] ?? ""}
-            onChange={(e) =>
-              onChange({ ...value, network_id: e.target.value ? [Number(e.target.value)] : undefined })
-            }
-          >
-            <option value="">All networks</option>
-            {networks.map((n) => (
-              <option key={n.id} value={n.id}>
-                {n.name} ({n.cidr})
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Zone">
-          <Select
-            value={value.zone?.[0] ?? ""}
-            onChange={(e) => onChange({ ...value, zone: e.target.value ? [e.target.value] : undefined })}
-          >
-            <option value="">All zones</option>
-            {zones.map((z) => (
-              <option key={z}>{z}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="IP or CIDR">
-          <Input
-            value={value.ip ?? ""}
-            onChange={(e) => onChange({ ...value, ip: e.target.value || undefined })}
-            className="font-mono text-xs"
-            placeholder="10.20.0.0/24"
-          />
-        </Field>
-        <label className="flex items-end gap-2 pb-2 text-sm">
-          <input
-            type="checkbox"
-            className="accent-[var(--brand)]"
-            checked={!!value.exploitable}
-            onChange={(e) => onChange({ ...value, exploitable: e.target.checked || undefined })}
-          />
-          Exploitable only
-        </label>
       </div>
     </div>
   );
@@ -367,11 +294,14 @@ function GenerateDialog({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
+  const [config, setConfig] = useState(template.config);
   const [format, setFormat] = useState<ReportFormat>("pdf");
+  const [customizing, setCustomizing] = useState(false);
   const [name, setName] = useState(template.name);
   const [filters, setFilters] = useState<FindingFilters>(preset ?? template.config.filters ?? {});
   const create = useMutation({
-    mutationFn: () => api.post<ReportJob>("/reports", { template_id: template.id, format, name, filters }),
+    mutationFn: () =>
+      api.post<ReportJob>("/reports", { template_id: template.id, format, name, filters, config }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reports"] });
       toast.success("Report queued. It will appear in the list when ready.");
@@ -379,222 +309,65 @@ function GenerateDialog({
     },
   });
   return (
-    <Dialog
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title={`Generate: ${template.name}`}
-      className="max-w-xl"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" loading={create.isPending} onClick={() => create.mutate()}>
-            Generate report
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
-          <Field label="Report title">
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="Format">
-            <Select value={format} onChange={(e) => setFormat(e.target.value as ReportFormat)}>
-              <option value="pdf">PDF</option>
-              <option value="xlsx">Excel (.xlsx)</option>
-              <option value="html">HTML</option>
-              <option value="csv">CSV (findings only)</option>
-            </Select>
-          </Field>
-        </div>
-        <div className="border-t border-line pt-4">
-          <h4 className="mb-3 font-display text-sm font-semibold">Scope</h4>
-          <ScopeFields value={filters} onChange={setFilters} />
-        </div>
-      </div>
-    </Dialog>
-  );
-}
-
-function TemplateDialog({ initial, onClose }: { initial: Partial<ReportTemplate>; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [name, setName] = useState(initial.name ?? "");
-  const [description, setDescription] = useState(initial.description ?? "");
-  const [kind, setKind] = useState<TemplateKind>(initial.kind ?? "technical");
-  const [config, setConfig] = useState<TemplateConfig>(initial.config as TemplateConfig);
-  const setBranding = (k: keyof TemplateConfig["branding"], v: string) =>
-    setConfig((c) => ({ ...c, branding: { ...c.branding, [k]: v } }));
-  const save = useMutation({
-    mutationFn: () =>
-      initial.id
-        ? api.patch(`/report-templates/${initial.id}`, { name, description, config })
-        : api.post("/report-templates", { name, description, kind, config }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["report-templates"] });
-      toast.success(initial.id ? "Template saved" : "Template created");
-      onClose();
-    },
-  });
-  const available = SECTIONS.filter((s) => s.kinds.includes(kind));
-
-  return (
-    <Dialog
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title={initial.id ? "Edit template" : "New report template"}
-      className="max-w-2xl"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            disabled={!name.trim() || !config.sections.length}
-            loading={save.isPending}
-            onClick={() => save.mutate()}
-          >
-            {initial.id ? "Save template" : "Create template"}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Name">
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Monthly PCI zone report"
-            />
-          </Field>
-          <Field label="Type">
-            <Select
-              value={kind}
-              disabled={!!initial.id}
-              onChange={(e) => {
-                const k = e.target.value as TemplateKind;
-                setKind(k);
-                setConfig((c) => ({
-                  ...c,
-                  sections: c.sections.filter((s) => SECTIONS.find((x) => x.key === s)?.kinds.includes(k)),
-                }));
-              }}
-            >
-              <option value="executive">Executive summary</option>
-              <option value="technical">Technical detail</option>
-              <option value="network">By network range</option>
-            </Select>
-          </Field>
-          <Field label="Description" className="sm:col-span-2">
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-          </Field>
-        </div>
-
-        <section>
-          <h4 className="mb-2 font-display text-sm font-semibold">Sections</h4>
-          <div className="grid gap-1.5 sm:grid-cols-2">
-            {available.map((s) => (
-              <label key={s.key} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="accent-[var(--brand)]"
-                  checked={config.sections.includes(s.key)}
-                  onChange={(e) =>
-                    setConfig((c) => ({
-                      ...c,
-                      sections: e.target.checked
-                        ? available.map((a) => a.key).filter((k) => k === s.key || c.sections.includes(k))
-                        : c.sections.filter((x) => x !== s.key),
-                    }))
-                  }
-                />
-                {s.label}
-              </label>
-            ))}
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field label="Items in “top” lists">
-              <Input
-                type="number"
-                min={1}
-                max={100}
-                value={config.top_n}
-                onChange={(e) => setConfig((c) => ({ ...c, top_n: Number(e.target.value) || 10 }))}
-              />
+    <>
+      <Dialog
+        open
+        onOpenChange={(o) => !o && onClose()}
+        title={`Generate: ${template.name}`}
+        className="max-w-xl"
+        footer={
+          <>
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={create.isPending} onClick={() => create.mutate()}>
+              Generate report
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
+            <Field label="Report title">
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
-            {kind === "technical" && (
-              <Field label="Group detailed findings by">
-                <Select
-                  value={config.group_by}
-                  onChange={(e) =>
-                    setConfig((c) => ({ ...c, group_by: e.target.value as "host" | "plugin" }))
-                  }
-                >
-                  <option value="plugin">Vulnerability</option>
-                  <option value="host">Host</option>
-                </Select>
-              </Field>
-            )}
-          </div>
-          <Field label="Introduction text" className="mt-3" hint="Shown in the summary section">
-            <Textarea
-              value={config.intro}
-              onChange={(e) => setConfig((c) => ({ ...c, intro: e.target.value }))}
-            />
-          </Field>
-        </section>
-
-        <section>
-          <h4 className="mb-2 font-display text-sm font-semibold">Branding</h4>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Company name">
-              <Input
-                value={config.branding.company_name}
-                onChange={(e) => setBranding("company_name", e.target.value)}
-              />
-            </Field>
-            <Field label="Accent colour">
-              <div className="flex gap-2">
-                <input
-                  type="color"
-                  value={config.branding.primary_color}
-                  onChange={(e) => setBranding("primary_color", e.target.value)}
-                  className="h-9 w-12 cursor-pointer rounded-md border border-line bg-surface"
-                  aria-label="Accent colour"
-                />
-                <Input
-                  value={config.branding.primary_color}
-                  onChange={(e) => setBranding("primary_color", e.target.value)}
-                  className="font-mono"
-                />
-              </div>
-            </Field>
-            <Field label="Classification banner">
-              <Input
-                value={config.branding.classification}
-                onChange={(e) => setBranding("classification", e.target.value)}
-              />
-            </Field>
-            <Field label="Footer text">
-              <Input
-                value={config.branding.footer_text}
-                onChange={(e) => setBranding("footer_text", e.target.value)}
-              />
+            <Field label="Format">
+              <Select value={format} onChange={(e) => setFormat(e.target.value as ReportFormat)}>
+                <option value="pdf">PDF</option>
+                <option value="xlsx">Excel (.xlsx)</option>
+                <option value="html">HTML</option>
+                <option value="csv">CSV (findings only)</option>
+              </Select>
             </Field>
           </div>
-        </section>
-
-        <section>
-          <h4 className="mb-2 font-display text-sm font-semibold">Default scope</h4>
-          <ScopeFields
-            value={config.filters ?? {}}
-            onChange={(filters) => setConfig((c) => ({ ...c, filters }))}
-          />
-        </section>
-      </div>
-    </Dialog>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-2 p-3">
+            <div className="text-sm">
+              <div className="font-medium">Make it specific to this report</div>
+              <p className="text-xs text-ink-3">Edit text and design without changing the saved template.</p>
+            </div>
+            <Button size="sm" onClick={() => setCustomizing(true)}>
+              <Pencil className="size-3.5" />
+              Customize
+            </Button>
+          </div>
+          <div className="border-t border-line pt-4">
+            <h4 className="mb-3 font-display text-sm font-semibold">Scope</h4>
+            <ScopeFields value={filters} onChange={setFilters} />
+          </div>
+        </div>
+      </Dialog>
+      {customizing && (
+        <ReportEditor
+          initial={{ ...template, name, config: { ...config, filters } }}
+          reportOnly
+          onApply={(next, title) => {
+            setConfig(next);
+            setName(title);
+            setFilters(next.filters);
+          }}
+          onClose={() => setCustomizing(false)}
+        />
+      )}
+    </>
   );
 }

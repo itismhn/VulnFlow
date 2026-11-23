@@ -35,7 +35,7 @@ from app.core.config import settings
 log = logging.getLogger(__name__)
 
 FORMAT = 1
-STORAGE_DIRS = ("scans", "reports")
+STORAGE_DIRS = ("scans", "reports", "report-assets")
 NAME_RE = re.compile(r"^vulnflow-\d{8}-\d{6}-(manual|scheduled)\.tar\.gz$")
 LOCK_NAME = ".backup.lock"
 LAST_RUN_NAME = ".last-run.json"
@@ -351,7 +351,9 @@ def _check_revision(revision: str) -> None:
 
 def _safe_members(tar: tarfile.TarFile) -> list[tarfile.TarInfo]:
     members = tar.getmembers()
-    allowed = re.compile(r"^(manifest\.json|database\.dump|storage/(scans|reports)/[A-Za-z0-9._-]+)$")
+    allowed = re.compile(
+        r"^(manifest\.json|database\.dump|storage/(scans|reports|report-assets)/[A-Za-z0-9._-]+)$"
+    )
     for m in members:
         if not m.isfile() or not allowed.match(m.name):
             raise BackupError(f"Unexpected entry in backup: {m.name!r}")

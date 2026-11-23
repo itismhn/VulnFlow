@@ -64,7 +64,8 @@ VulnFlow turns a pile of scan exports into a managed, auditable vulnerability ba
 
 **Reporting**
 - Built-in templates: **Executive Summary**, **Technical Detailed**, **Network / Range Report**.
-- Custom templates: choose sections, default scope, intro text, and branding (company name, accent colour, classification banner such as *CONFIDENTIAL*).
+- Manual report designer: create opening pages with background images, logos, and positioned text; reorder sections, write custom content, and configure page layout.
+- Save reusable templates, preview reports, and customize a single report without changing its template. See the [report designer guide](docs/report-designer.md).
 - Output as **PDF, Excel (.xlsx), CSV, or HTML**. Any findings view can be turned into a report in one click.
 
 **Access control & audit**
