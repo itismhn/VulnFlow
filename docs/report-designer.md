@@ -56,6 +56,7 @@ The development demonstration uses a separate PostgreSQL cluster on port 55432 a
 ### Reporting verification, 23 November 2026
 
 - Full backend suite: 102 passing tests, including 26 designer tests. Frontend production build, lint, and both type checks passed.
+- The first container scan exposed fixable dependencies. Updated Pillow to 13.0.0, Brotli to 1.2.1, and dnspython to 2.9.2; explicitly install the current distribution zlib package when building the container. Re-ran the full suite and regenerated the sample with these dependencies.
 - Exercised PDF, portable HTML, XLSX, and CSV generation; template create/edit/duplicate-name/delete; job snapshots; report-specific overrides; scoped previews and exports; report history access; image uploads and backup/restore.
 - Checked A4/Letter in both orientations, hidden covers, section page breaks, no matching findings, detail limits, invalid settings, and long report titles. A rendering regression verifies charts stay inside the printable area at maximum margins.
 - Generated a five-page Northstar executive assessment from fictional data, saved its reusable template in the demo, and visually inspected every PDF page. Local copies: `output/reports/northstar-assessment.pdf` and corresponding HTML/XLSX/CSV.
