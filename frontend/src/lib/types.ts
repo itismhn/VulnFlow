@@ -101,6 +101,7 @@ export interface ScanDiff {
   compare_scan_id: number;
   new: number;
   fixed: number;
+  not_verified: number;
   persisting: number;
 }
 

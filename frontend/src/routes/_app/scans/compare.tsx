@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ComparePage, type CompareSearch } from "@/features/scans/compare-page";
 
 const num = (v: unknown) => (Number(v) > 0 ? Number(v) : undefined);
-const KINDS = ["new", "fixed", "persisting"] as const;
+const KINDS = ["new", "fixed", "persisting", "not_verified"] as const;
 
 export const Route = createFileRoute("/_app/scans/compare")({
   validateSearch: (s: Record<string, unknown>): CompareSearch => ({

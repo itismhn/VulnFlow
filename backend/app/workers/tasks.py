@@ -55,6 +55,7 @@ def generate_report_task(job_id: int) -> None:
         try:
             render_report(db, job)
             job.status = JobStatus.DONE
+            job.error = ""
         except Exception as exc:
             db.rollback()
             log.exception("Report %s failed", job_id)

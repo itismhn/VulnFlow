@@ -55,7 +55,8 @@ def test_large_batch_imports(db: Session, tmp_path: Path) -> None:
             ip = f"10.1.{h // 250}.{h % 250 + 1}"
             fh.write(
                 f'<ReportHost name="{ip}"><HostProperties><tag name="host-ip">{ip}</tag>'
-                '<tag name="HOST_START">Mon Feb  2 10:00:00 2026</tag></HostProperties></ReportHost>'
+                '<tag name="HOST_START">Mon Feb  2 10:00:00 2026</tag>'
+                '<tag name="HOST_END">Mon Feb  2 10:05:00 2026</tag></HostProperties></ReportHost>'
             )
         fh.write("</Report></NessusClientData_v2>")
     scan = _ingest(db, second, "b")

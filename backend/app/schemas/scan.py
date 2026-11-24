@@ -69,4 +69,5 @@ class ScanDiff(BaseModel):
     compare_scan_id: int
     new: int
     fixed: int
+    not_verified: int = 0
     persisting: int

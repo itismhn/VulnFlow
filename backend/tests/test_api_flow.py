@@ -216,7 +216,12 @@ def test_reports(loaded: ApiClient, fmt: str) -> None:
         job = loaded.get(f"/api/v1/reports/{r.json()['id']}").json()
         assert job["status"] == "done", job["error"]
         dl = loaded.get(f"/api/v1/reports/{job['id']}/download")
-        assert dl.status_code == 200 and len(dl.content) > 200
+        assert dl.status_code == 200
+        if fmt == "csv":
+            # A scenario preset can legitimately have no matching findings.
+            assert dl.content.decode("utf-8-sig").startswith("IP,Hostname,")
+        else:
+            assert len(dl.content) > 200
         if fmt == "html":
             assert "CONFIDENTIAL" in dl.text
 

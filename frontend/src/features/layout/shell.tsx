@@ -184,7 +184,7 @@ export function AppShell() {
           </button>
           <div className="ml-auto flex items-center gap-1.5">
             {can("scans:upload") && (
-              <Button variant="primary" onClick={() => setUploadOpen(true)}>
+              <Button variant="primary" onClick={() => setUploadOpen(true)} aria-label="Import scan">
                 <Upload className="size-4" />
                 <span className="hidden sm:inline">Import scan</span>
               </Button>

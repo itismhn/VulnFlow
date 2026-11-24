@@ -23,6 +23,11 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     setError(null);
   }
 
+  function close() {
+    reset();
+    onOpenChange(false);
+  }
+
   function add(list: FileList | null) {
     if (!list) return;
     const picked = Array.from(list).filter((f) => /\.(nessus|xml)$/i.test(f.name));
@@ -62,12 +67,12 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       description="Export from Nessus as “Nessus (.nessus)” format. Large files are processed in the background."
       footer={
         results ? (
-          <Button variant="primary" onClick={() => onOpenChange(false)}>
+          <Button variant="primary" onClick={close}>
             Done
           </Button>
         ) : (
           <>
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button variant="ghost" onClick={close}>
               Cancel
             </Button>
             <Button variant="primary" disabled={!files.length} loading={busy} onClick={submit}>
@@ -92,7 +97,7 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   <Link
                     to="/scans/$scanId"
                     params={{ scanId: String(r.scan_id) }}
-                    onClick={() => onOpenChange(false)}
+                    onClick={close}
                     className="text-xs text-brand hover:underline"
                   >
                     Queued for import — view progress
@@ -106,7 +111,7 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                         <Link
                           to="/scans/$scanId"
                           params={{ scanId: String(r.duplicate_of) }}
-                          onClick={() => onOpenChange(false)}
+                          onClick={close}
                           className="text-brand hover:underline"
                         >
                           Open existing scan

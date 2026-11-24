@@ -11,14 +11,20 @@ import { cn, fmtDate, fmtNum } from "@/lib/utils";
 export interface CompareSearch {
   base?: number;
   compare?: number;
-  kind?: "new" | "fixed" | "persisting";
+  kind?: "new" | "fixed" | "persisting" | "not_verified";
   page?: number;
   finding?: number;
 }
 
 const KINDS = [
   { key: "new", label: "New", hint: "Found in the newer scan only", tone: "text-critical" },
-  { key: "fixed", label: "Fixed", hint: "Gone in the newer scan", tone: "text-ok" },
+  { key: "fixed", label: "Fixed", hint: "Absent with comparable scan coverage", tone: "text-ok" },
+  {
+    key: "not_verified",
+    label: "Not verified",
+    hint: "Absent, but coverage cannot verify a fix",
+    tone: "text-ink-2",
+  },
   { key: "persisting", label: "Persisting", hint: "Present in both", tone: "text-ink" },
 ] as const;
 
@@ -87,12 +93,18 @@ export function ComparePage({ search }: { search: CompareSearch }) {
       {!ready ? (
         <Card>
           <EmptyState icon={<GitCompare className="size-8" />} title="Pick two scans">
-            Choose an older and a newer scan of the same hosts to see new, fixed and persisting findings.
+            Choose an older and a newer scan of the same hosts to see new, fixed, not verified and persisting
+            findings.
           </EmptyState>
         </Card>
       ) : (
         <>
-          <div className="mb-4 grid grid-cols-3 gap-3">
+          <p className="mb-4 text-sm text-ink-2">
+            Missing findings are not verified when credentials, plugin families or scan completion dates
+            prevent a reliable comparison. Hosts absent from either scan are excluded. Finding badges show the
+            current workflow status.
+          </p>
+          <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {KINDS.map((k) => (
               <button
                 key={k.key}
@@ -120,7 +132,7 @@ export function ComparePage({ search }: { search: CompareSearch }) {
                 ))}
               </div>
             ) : !list.data?.items.length ? (
-              <EmptyState title={`No ${kind} findings`}>
+              <EmptyState title={`No ${KINDS.find((k) => k.key === kind)?.label.toLowerCase()} findings`}>
                 Nothing in this group between these two scans.
               </EmptyState>
             ) : (

@@ -48,8 +48,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refetch: query.refetch,
     logout: async () => {
       await api.post("/auth/logout").catch(() => {});
-      qc.clear();
+      await qc.cancelQueries();
       qc.setQueryData(["me"], null);
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
     },
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

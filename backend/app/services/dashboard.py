@@ -2,14 +2,15 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import Date, and_, cast, func, literal_column, select, text
+from sqlalchemy import Date, and_, cast, exists, func, literal_column, select, text
 from sqlalchemy.orm import Session
 
-from app.models import Asset, Finding, Network, Plugin, Scan, User
+from app.models import Asset, Finding, Network, Plugin, Scan, ScanHost, User
 from app.models.enums import ACTIVE_STATUSES, FindingStatus, ScanStatus
 from app.schemas.common import SeverityCounts
 from app.schemas.finding import FindingFilters
 from app.services.findings_query import SEVERITY_WEIGHT, apply_filters, base_query
+from app.services.scoping import asset_scope_clause
 
 
 class TrendPoint(BaseModel):
@@ -129,11 +130,19 @@ def build_dashboard(
         if sev in names and days is not None:
             mttr[names[sev]] = round(float(days), 1)
 
-    last_scan = db.execute(
-        select(func.count(), func.max(Scan.started_at)).where(
-            Scan.status == ScanStatus.DONE, Scan.archived.is_(False)
+    scan_stats = select(func.count(), func.max(Scan.started_at)).where(
+        Scan.status == ScanStatus.DONE, Scan.archived.is_(False)
+    )
+    if user.scope_restricted:
+        scan_stats = scan_stats.where(
+            exists(
+                select(1)
+                .select_from(ScanHost)
+                .join(Asset, Asset.id == ScanHost.asset_id)
+                .where(ScanHost.scan_id == Scan.id, asset_scope_clause(user))
+            )
         )
-    ).one()
+    last_scan = db.execute(scan_stats).one()
 
     kpis = Kpis(
         open=SeverityCounts(

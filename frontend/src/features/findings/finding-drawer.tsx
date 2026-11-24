@@ -260,7 +260,7 @@ function History({ finding: f }: { finding: FindingDetail }) {
                   <strong>First detected</strong>
                 )
               ) : e.kind === "assign" ? (
-                <strong>{e.note.split(":")[0]}</strong>
+                <strong>{e.note}</strong>
               ) : e.kind === "risk" ? (
                 <strong>Risk acceptance</strong>
               ) : (

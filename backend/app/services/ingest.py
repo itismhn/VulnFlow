@@ -12,6 +12,7 @@ Lifecycle rules (per host the scan covered):
                                                        was imported first), unless:
       - its plugin family was disabled in this scan's policy, or
       - this host scan was uncredentialed but the last sighting was credentialed
+      - the host lacks valid scanner start/completion timestamps
   * `risk_accepted` / `false_positive` are never changed by imports
 """
 
@@ -190,7 +191,8 @@ def _process_batch(
         {
             "scan_id": scan.id,
             "asset_id": asset_ids[h.ip],
-            "started_at": times[h.ip],
+            # Missing scanner dates must not turn import time into proof of a fix.
+            "started_at": h.started_at,
             "ended_at": h.ended_at,
             "credentialed": h.credentialed,
             "os": h.os[:255],
@@ -357,6 +359,7 @@ _AUTO_FIX_CANDIDATES = text(
     JOIN scans s ON s.id = sh.scan_id
     WHERE f.asset_id = ANY(:asset_ids)
       AND f.status = ANY(:active)
+      AND sh.ended_at >= sh.started_at
       AND NOT (p.family = ANY(coalesce(s.disabled_families, '{}')))
       AND NOT EXISTS (
           SELECT 1 FROM finding_occurrences o
@@ -376,7 +379,13 @@ _AUTO_FIX_CANDIDATES = text(
 )
 
 
-def _auto_fix(db: Session, scan: Scan, asset_ids: list[int], fallback_time: datetime) -> int:
+def _auto_fix(
+    db: Session,
+    scan: Scan | None,
+    asset_ids: list[int],
+    fallback_time: datetime,
+    finding_ids: set[int] | None = None,
+) -> int:
     """Close active findings a newer host scan did not see. Returns how many this scan closed."""
     if not asset_ids:
         return 0
@@ -385,6 +394,8 @@ def _auto_fix(db: Session, scan: Scan, asset_ids: list[int], fallback_time: date
         _AUTO_FIX_CANDIDATES,
         {"asset_ids": sorted(set(asset_ids)), "active": [s.value for s in ACTIVE_STATUSES]},
     ).all()
+    if finding_ids is not None:
+        candidates = [c for c in candidates if c.id in finding_ids]
     if not candidates:
         return 0
     db.execute(
@@ -408,7 +419,7 @@ def _auto_fix(db: Session, scan: Scan, asset_ids: list[int], fallback_time: date
     ]
     for chunk in chunked(events):
         db.execute(insert(FindingEvent).values(chunk))
-    return sum(1 for c in candidates if c.scan_id == scan.id)
+    return sum(1 for c in candidates if scan is not None and c.scan_id == scan.id)
 
 
 def _finalize_scan(db: Session, scan: Scan, meta: Any, stats: IngestStats) -> None:
@@ -442,7 +453,7 @@ def _finalize_scan(db: Session, scan: Scan, meta: Any, stats: IngestStats) -> No
     scan.parsed_at = datetime.now(UTC)
 
 
-def recompute_after_scan_delete(db: Session, asset_ids: list[int]) -> None:
+def recompute_after_scan_delete(db: Session, asset_ids: list[int], reverted_ids: set[int]) -> None:
     """After a scan's occurrences are gone, drop orphaned findings and fix seen-dates."""
     if not asset_ids:
         return
@@ -465,12 +476,13 @@ def recompute_after_scan_delete(db: Session, asset_ids: list[int]) -> None:
                 last_scan_id = agg.last_scan_id
             FROM (
                 SELECT o.finding_id,
-                       min(sh.started_at) AS first_seen,
-                       max(sh.started_at) AS last_seen,
-                       (array_agg(o.scan_id ORDER BY sh.started_at DESC))[1] AS last_scan_id
+                       min(coalesce(sh.started_at, sh.ended_at, s.created_at)) AS first_seen,
+                       max(coalesce(sh.started_at, sh.ended_at, s.created_at)) AS last_seen,
+                       (array_agg(o.scan_id ORDER BY coalesce(sh.started_at, sh.ended_at, s.created_at) DESC))[1] AS last_scan_id
                 FROM finding_occurrences o
                 JOIN findings f2 ON f2.id = o.finding_id
                 JOIN scan_hosts sh ON sh.scan_id = o.scan_id AND sh.asset_id = f2.asset_id
+                JOIN scans s ON s.id = o.scan_id
                 WHERE f2.asset_id = ANY(:ids)
                 GROUP BY o.finding_id
             ) agg
@@ -489,4 +501,19 @@ def recompute_after_scan_delete(db: Session, asset_ids: list[int]) -> None:
         ),
         {"ids": asset_ids},
     )
+    # A deleted reopening can restore `fixed` after having cleared its date.
+    # Recover that date from the remaining host coverage, not import/event time.
+    if reverted_ids:
+        for candidate in db.execute(
+            _AUTO_FIX_CANDIDATES,
+            {"asset_ids": sorted(set(asset_ids)), "active": [FindingStatus.FIXED.value]},
+        ).all():
+            if candidate.id in reverted_ids:
+                db.execute(
+                    update(Finding)
+                    .where(Finding.id == candidate.id, Finding.fixed_at.is_(None))
+                    .values(fixed_at=candidate.observed_at)
+                )
+        # Deleting the first clean scan must not undo a fix another scan proves.
+        _auto_fix(db, None, asset_ids, datetime.now(UTC), reverted_ids)
     software.rebuild(db, asset_ids)

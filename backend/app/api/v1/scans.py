@@ -1,4 +1,5 @@
 import hashlib
+import ipaddress
 import shutil
 import tempfile
 from pathlib import Path
@@ -6,21 +7,22 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import and_, exists, func, or_, select, text
+from sqlalchemy import and_, any_, exists, func, or_, select, text
 from sqlalchemy.orm import aliased
+from starlette.concurrency import run_in_threadpool
 
 from app.core.audit import audit
 from app.core.config import settings
 from app.core.deps import DB, require
 from app.core.permissions import Perm
 from app.core.storage import scan_file_path, storage_path
-from app.models import Asset, Finding, FindingEvent, FindingOccurrence, Scan, ScanHost, User
+from app.models import Asset, Finding, FindingEvent, FindingOccurrence, Plugin, Scan, ScanHost, User
 from app.models.enums import FindingEventKind, FindingStatus, ScanStatus
 from app.schemas.common import Page, SeverityCounts
 from app.schemas.finding import FindingOut
 from app.schemas.scan import ScanDiff, ScanHostOut, ScanOut, ScanUpdate, UploadResult
 from app.services.findings_query import apply_sort, base_query
-from app.services.ingest import recompute_after_scan_delete
+from app.services.ingest import lock_ingest, recompute_after_scan_delete
 from app.services.parsers import ParseError, get_parser
 from app.services.scoping import asset_scope_clause
 from app.workers.tasks import ingest_scan_task
@@ -157,6 +159,14 @@ async def _save_upload(upload: UploadFile) -> tuple[Path, str, int]:
     return Path(tmp.name), digest.hexdigest(), size
 
 
+def _validate_upload_scope(path: Path, ranges: list[str]) -> None:
+    allowed = [ipaddress.ip_network(cidr) for cidr in ranges]
+    for host in get_parser(path).iter_hosts(path):
+        address = ipaddress.ip_address(host.ip)
+        if not any(address in network for network in allowed):
+            raise ParseError("Scan contains hosts outside your assigned networks; no hosts were imported")
+
+
 @router.post("/upload", response_model=list[UploadResult])
 async def upload_scans(
     files: list[UploadFile], request: Request, user: Uploader, db: DB
@@ -171,6 +181,10 @@ async def upload_scans(
         try:
             tmp, sha, size = await _save_upload(upload)
             get_parser(tmp)  # rejects non-Nessus content early
+            if user.scope_restricted:
+                # Validate the whole file before enqueueing: imports also change
+                # existing findings, so read scoping alone cannot protect them.
+                await run_in_threadpool(_validate_upload_scope, tmp, [str(n.cidr) for n in user.networks])
         except ParseError as exc:
             if tmp:
                 tmp.unlink(missing_ok=True)
@@ -247,13 +261,14 @@ def reparse_scan(scan_id: int, request: Request, user: Manager, db: DB) -> ScanO
 
 @router.delete("/{scan_id}", status_code=204)
 def delete_scan(scan_id: int, request: Request, user: Manager, db: DB) -> None:
+    lock_ingest(db)
     scan = _get_scan(db, scan_id, user)
     if scan.status == ScanStatus.PARSING:
         raise HTTPException(status.HTTP_409_CONFLICT, "Scan is being processed")
     asset_ids = list(db.scalars(select(ScanHost.asset_id).where(ScanHost.scan_id == scan.id)))
 
     # Undo status changes this scan caused (auto-fix / reopen) before forgetting it
-    db.execute(
+    reverted = db.scalars(
         text(
             """
             UPDATE findings f SET status = e.from_status,
@@ -261,9 +276,29 @@ def delete_scan(scan_id: int, request: Request, user: Manager, db: DB) -> None:
             FROM finding_events e
             WHERE e.finding_id = f.id AND e.scan_id = :sid AND e.kind = :kind
               AND f.status = e.to_status AND e.from_status IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM finding_events later
+                  WHERE later.finding_id = f.id AND later.kind = :kind
+                    AND later.id > e.id
+                    AND (later.scan_id IS NOT NULL OR later.actor_id IS NOT NULL)
+              )
+            RETURNING f.id
             """
         ),
         {"sid": scan.id, "kind": FindingEventKind.STATUS.value},
+    ).all()
+    db.execute(
+        text(
+            """
+            UPDATE findings f SET reopen_count = greatest(0, f.reopen_count - e.n)
+            FROM (
+                SELECT finding_id, count(*) AS n FROM finding_events
+                WHERE scan_id = :sid AND from_status = 'fixed' AND to_status = 'reopened'
+                GROUP BY finding_id
+            ) e WHERE f.id = e.finding_id
+            """
+        ),
+        {"sid": scan.id},
     )
     file_path = Path(scan.file_path)
     audit(
@@ -277,7 +312,7 @@ def delete_scan(scan_id: int, request: Request, user: Manager, db: DB) -> None:
     )
     db.delete(scan)
     db.flush()
-    recompute_after_scan_delete(db, asset_ids)
+    recompute_after_scan_delete(db, asset_ids, set(reverted))
     db.commit()
     file_path.unlink(missing_ok=True)
 
@@ -332,7 +367,7 @@ def scan_hosts(scan_id: int, user: Reader, db: DB) -> list[ScanHostOut]:
     return out
 
 
-def _diff_sets(db: DB, user: User, scan_id: int, against: int) -> tuple[set[int], set[int]]:
+def _diff_sets(db: DB, user: User, scan_id: int, against: int) -> tuple[set[int], set[int], set[int]]:
     """Finding ids (info excluded) on hosts covered by both scans: (base, current)."""
     _get_scan(db, scan_id, user)
     _get_scan(db, against, user)
@@ -358,18 +393,38 @@ def _diff_sets(db: DB, user: User, scan_id: int, against: int) -> tuple[set[int]
             stmt = stmt.where(asset_scope_clause(user))
         return set(db.scalars(stmt))
 
-    return finding_ids(against), finding_ids(scan_id)
+    base, current = finding_ids(against), finding_ids(scan_id)
+    # Absence alone is not evidence of a fix when coverage became weaker.
+    verified = set(
+        db.scalars(
+            select(FindingOccurrence.finding_id)
+            .join(Finding, Finding.id == FindingOccurrence.finding_id)
+            .join(Plugin, Plugin.id == Finding.plugin_id)
+            .join(sh_a, and_(sh_a.asset_id == Finding.asset_id, sh_a.scan_id == against))
+            .join(sh_b, and_(sh_b.asset_id == Finding.asset_id, sh_b.scan_id == scan_id))
+            .join(Scan, Scan.id == sh_b.scan_id)
+            .where(
+                FindingOccurrence.scan_id == against,
+                sh_b.started_at > sh_a.started_at,
+                sh_b.ended_at >= sh_b.started_at,
+                or_(sh_b.credentialed, ~sh_a.credentialed),
+                ~(Plugin.family == any_(func.coalesce(Scan.disabled_families, text("'{}'::varchar[]")))),
+            )
+        )
+    )
+    return base, current, (base - current) & verified
 
 
 @router.get("/{scan_id}/diff", response_model=ScanDiff)
 def diff_scans(scan_id: int, user: Reader, db: DB, against: int) -> ScanDiff:
     """Compare findings on hosts covered by both scans (info severity excluded)."""
-    base, current = _diff_sets(db, user, scan_id, against)
+    base, current, fixed = _diff_sets(db, user, scan_id, against)
     return ScanDiff(
         base_scan_id=against,
         compare_scan_id=scan_id,
         new=len(current - base),
-        fixed=len(base - current),
+        fixed=len(fixed),
+        not_verified=len((base - current) - fixed),
         persisting=len(base & current),
     )
 
@@ -380,12 +435,17 @@ def diff_findings(
     user: Reader,
     db: DB,
     against: int,
-    kind: Literal["new", "fixed", "persisting"],
+    kind: Literal["new", "fixed", "persisting", "not_verified"],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=500)] = 50,
 ) -> Page[FindingOut]:
-    base, current = _diff_sets(db, user, scan_id, against)
-    ids = {"new": current - base, "fixed": base - current, "persisting": base & current}[kind]
+    base, current, fixed = _diff_sets(db, user, scan_id, against)
+    ids = {
+        "new": current - base,
+        "fixed": fixed,
+        "not_verified": (base - current) - fixed,
+        "persisting": base & current,
+    }[kind]
     if not ids:
         return Page(items=[], total=0, page=page, page_size=page_size)
     rows = db.scalars(

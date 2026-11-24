@@ -25,18 +25,19 @@ VulnFlow turns a pile of scan exports into a managed, auditable vulnerability ba
 **Scan import & history**
 - Drag-and-drop `.nessus` (v2) upload. Several files at once, streamed and parsed in the background, so 100 MB+ files are fine.
 - Duplicate file detection (SHA-256), progress tracking, re-import, archive, and delete. Deleting a scan reverts the status changes it caused.
-- Each scan shows new, fixed, and persisting findings compared with the previous scan of the same hosts.
+- Each scan shows new, fixed, and persisting findings compared with the previous scan of the same hosts. Missing findings with weaker credentials, disabled plugin families, or non-later host timestamps are shown separately as **not verified**.
 
 **Finding lifecycle that matches reality**
 - Each finding is unique per *host + plugin + port + protocol* and tracked across every scan.
 - Detected again → `last seen` updates; a `fixed` finding becomes **reopened**.
-- Missing from a newer scan of that host → **auto-fixed**, with two safeguards against false closures:
+- Missing from a newer scan of that host → **auto-fixed**, with safeguards against false closures:
   - an uncredentialed scan never closes findings from a credentialed one;
-  - plugin families disabled in the scan policy are never closed.
+  - plugin families disabled in the scan policy are never closed;
+  - host entries without valid start and completion timestamps cannot prove a fix.
 - Only hosts a scan actually covered are compared, so a full `/16` sweep one month and a single-subnet scan the next can be mixed freely: hosts outside the smaller scan keep their findings as they are.
 - Out-of-order imports of older scans are handled correctly: they never reopen what a newer scan fixed, and findings only an older scan saw are closed by the newer one.
 - Nothing is deleted when it is fixed. Every finding keeps its status timeline and the list of scans that detected it.
-- Manual statuses: in progress, risk accepted (through approval), false positive. Imports never touch them.
+- Manual statuses: in progress, risk accepted (through approval), false positive. Imports preserve risk acceptance and false-positive statuses; a newer comparable scan can automatically fix an in-progress finding.
 
 **Explore & manage**
 - Findings explorer with shareable URL filters: severity, status, **IP or CIDR**, network, zone, CVE, port, plugin family, CVSS, exploitability, overdue, and scan.
@@ -72,6 +73,7 @@ VulnFlow turns a pile of scan exports into a managed, auditable vulnerability ba
 - Local accounts with three roles: **Admin**, **Analyst**, and **Viewer**.
 - **Network scoping**: restrict a user to specific ranges. Every query, export, and report respects it.
 - Append-only **audit log** covering sign-ins, failed logins, imports, status changes, exports, downloads, and admin actions, with CSV export and a retention setting.
+- Uploads by network-scoped users are checked before queueing; files containing hosts outside their assigned ranges are rejected without importing any hosts.
 
 **Backup & restore**
 - One archive holds everything: the database, uploaded `.nessus` files, and generated reports.

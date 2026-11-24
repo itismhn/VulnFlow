@@ -216,6 +216,12 @@ export function ScanDetailPage({ id }: { id: number }) {
                   tone="text-ink"
                 />
               </div>
+              {!!diff?.not_verified && (
+                <p className="mt-2 text-xs text-ink-2">
+                  {fmtNum(diff.not_verified)} missing findings could not be verified as fixed because scan
+                  coverage or dates are not comparable.
+                </p>
+              )}
               {!previous ? (
                 <p className="mt-2 text-xs text-ink-3">No earlier scan of these hosts to compare with.</p>
               ) : (

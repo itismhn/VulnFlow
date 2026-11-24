@@ -54,7 +54,8 @@ Imports run in one database transaction and are serialised with a Postgres advis
 After all hosts are processed, **auto-fix** closes active findings on covered hosts that this scan did not report, unless:
 - the scan is older than the finding's last sighting;
 - the finding's plugin family was disabled in this scan's policy;
-- this host scan was uncredentialed but the finding was last seen by a credentialed scan.
+- this host scan was uncredentialed but the finding was last seen by a credentialed scan;
+- the host's start or completion timestamp is missing, or completion precedes start. Import time is never stored as host scan coverage time.
 
 `risk_accepted` and `false_positive` are never changed by imports.
 
@@ -68,11 +69,15 @@ After auto-fix, the importer also applies enabled **suppression rules** to the i
 - **Notifications** are rows per user. @mentions only notify users who can see the finding under their network scope.
 
 Deleting a scan reverts the status changes it caused, removes findings that only it observed, and recomputes seen-dates from the remaining occurrences.
+Remaining clean scans can still prove a finding fixed; deleting a reopening restores the prior fix date and adjusts its reopen count. Later manual status decisions are preserved. Deletion shares the import advisory lock.
+
+Scan comparisons use the common hosts and classify missing findings as fixed only when the comparison host timestamp is later, start/completion timestamps are valid, credential coverage is sufficient, and the finding's family is enabled. Other missing findings appear as `not_verified`. These are historical comparisons; the displayed finding status reflects the current workflow.
 
 ## Access control
 
 - **Roles** map to permissions in `app/core/permissions.py`, and endpoints declare `require(Perm.X)`.
 - **Scope**: when `user.scope_restricted` is set, `scoping.asset_scope_clause` limits every asset and finding query to addresses inside the user's networks (`ip <<= cidr`, including nested ranges). Dashboards, exports, and reports reuse the same query builder, so scope cannot be bypassed through another view.
+- **Scoped uploads**: before queueing, the full file is parsed in a thread pool and every host must be inside an assigned range. A mixed-scope file is rejected as a whole, preventing imports from changing another team's findings. This adds a validation pass for scoped uploads.
 - **Audit**: write actions and sensitive reads (exports, downloads) call `audit()` in the same transaction as the change.
 
 ## Filters
