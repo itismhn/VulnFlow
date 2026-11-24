@@ -2,6 +2,27 @@
 
 Create reusable report templates in the built-in designer. Existing templates continue to use their saved sections and branding.
 
+## Built-in scenario templates
+
+The original **Executive Summary**, **Technical Detailed**, and **Network / Range Report** remain available. Eight additional presets support security team workflows:
+
+| Template | Default scope and purpose |
+|---|---|
+| Critical & High Remediation Plan | Active critical/high findings, grouped by vulnerability with solutions and affected hosts. |
+| Public Exploit Exposure Brief | Active findings flagged with public exploit metadata; this does not imply confirmed exploitation or internet exposure. |
+| Overdue Remediation Escalation | Active findings past their recorded due date; findings without due dates are excluded. |
+| Aging Vulnerability Backlog | Active findings first seen more than 90 days ago; first-seen age includes time before reopening. |
+| Asset Owner Remediation Handoff | Active findings grouped by host. Select the recipient's assets, network, or assignee before generating. |
+| Reopened Findings Review | Currently reopened findings with investigation prompts. |
+| Accepted Risk Review Register | Currently risk-accepted findings with a checklist for reviewing the supporting exceptions. Approval and expiry records are reviewed separately in the risk workflow. |
+| Security Team Operations Review | Current exposure, trend and aging charts, rolling activity metrics, and a recurring meeting agenda. |
+
+Each preset includes scenario-specific text, section ordering, and an accent colour. Duplicate a built-in template to save your own branding and wording, or use **Customize** when generating a single report. Default filters can be changed in **Scope**; generating from the findings explorer uses that explorer's scope instead of the template defaults.
+
+New built-ins are registered when the API starts. Restart an existing API to make them available; no migration is needed. Registration preserves existing templates, including user templates whose names match a new preset.
+
+Status-specific registers omit open-finding KPIs and charts because those metrics measure active findings independently of the selected status. The operations review is live, not a calendar-month snapshot: new/fixed metrics use the last 30 days and MTTR uses fixes from the last 180 days. HTML/PDF reproduce the preset's narrative and layout; CSV/XLSX export scoped data using the existing data-export layout. For owners and due dates, use the findings explorer or full CSV/XLSX export.
+
 ## Create manually
 
 Select **Reports → New template**. The editor has four panels:
