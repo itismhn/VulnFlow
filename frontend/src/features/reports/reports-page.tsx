@@ -46,6 +46,8 @@ const KIND_LABEL: Record<TemplateKind, string> = {
   network: "By network",
 };
 
+const MAIN_TEMPLATE_NAMES = new Set(["Executive Summary", "Technical Detailed", "Network / Range Report"]);
+
 const SECTIONS: { key: string; label: string; kinds: TemplateKind[] }[] = [
   { key: "summary", label: "Summary paragraph", kinds: ["executive", "technical", "network"] },
   { key: "kpis", label: "Key figures", kinds: ["executive", "technical"] },
@@ -78,11 +80,20 @@ export function ReportsPage({ initialFilters }: { initialFilters?: string }) {
   })();
   const [generating, setGenerating] = useState<ReportTemplate | null>(null);
   const [editing, setEditing] = useState<Partial<ReportTemplate> | null>(null);
+  const [showMoreTemplates, setShowMoreTemplates] = useState(false);
 
   const { data: templates = [] } = useQuery({
     queryKey: ["report-templates"],
     queryFn: () => api.get<ReportTemplate[]>("/report-templates"),
   });
+  const mainTemplates = templates.filter((t) => t.builtin && MAIN_TEMPLATE_NAMES.has(t.name));
+  const additionalTemplates = templates.filter((t) => t.builtin && !MAIN_TEMPLATE_NAMES.has(t.name));
+  const customTemplates = templates.filter((t) => !t.builtin);
+  const visibleTemplates = [
+    ...mainTemplates,
+    ...(showMoreTemplates ? additionalTemplates : []),
+    ...customTemplates,
+  ];
   const { data: jobs } = useQuery({
     queryKey: ["reports"],
     queryFn: () => api.get<Page<ReportJob>>("/reports", { page_size: 50 }),
@@ -129,12 +140,27 @@ export function ReportsPage({ initialFilters }: { initialFilters?: string }) {
         </Card>
       )}
 
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-lg font-semibold">Report templates</h2>
-        <span className="text-sm text-ink-3">{templates.length} templates · your branding, your content</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-ink-3">
+            {templates.length} templates · your branding, your content
+          </span>
+          {additionalTemplates.length > 0 && (
+            <Button
+              size="sm"
+              aria-expanded={showMoreTemplates}
+              onClick={() => setShowMoreTemplates((shown) => !shown)}
+            >
+              {showMoreTemplates
+                ? "Show fewer templates"
+                : `Show ${additionalTemplates.length} more templates`}
+            </Button>
+          )}
+        </div>
       </div>
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {templates.map((t) => (
+        {visibleTemplates.map((t) => (
           <Card key={t.id} className="flex flex-col overflow-hidden">
             <TemplateThumbnail template={t} />
             <div className="flex flex-1 flex-col p-4">
